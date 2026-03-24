@@ -1,24 +1,37 @@
--- 1. Table for OAuth Token Management
--- Proves you know how to handle state in a stateless serverless architecture.
-CREATE TABLE AppConfiguration (
-    ConfigKey NVARCHAR(50) PRIMARY KEY,
-    ConfigValue NVARCHAR(MAX) NOT NULL,
+CREATE TABLE Clients (
+    ClientId UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+    CompanyName NVARCHAR(255) NOT NULL,
+    TaxId NVARCHAR(50), -- NIP (Crucial for Polish bookkeeping)
+    CreatedAt DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET()
+);
+
+CREATE TABLE ClientAllegroTokens (
+    ClientId UNIQUEIDENTIFIER PRIMARY KEY FOREIGN KEY REFERENCES Clients(ClientId),
+    AccessToken NVARCHAR(MAX) NOT NULL,
+    RefreshToken NVARCHAR(MAX) NOT NULL,
+    ExpiresAt DATETIMEOFFSET NOT NULL,
     UpdatedAt DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET()
 );
 
--- 2. Core Orders Table
+CREATE TABLE OAuthStateTracker (
+    StateId UNIQUEIDENTIFIER PRIMARY KEY,
+    ClientId UNIQUEIDENTIFIER FOREIGN KEY REFERENCES Clients(ClientId),
+    CreatedAt DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET()
+);
+
+
 CREATE TABLE AllegroOrders (
     InternalId INT IDENTITY(1,1) PRIMARY KEY,
-    AllegroOrderId UNIQUEIDENTIFIER NOT NULL UNIQUE, -- Allegro uses UUIDs
+    ClientId UNIQUEIDENTIFIER NOT NULL FOREIGN KEY REFERENCES Clients(ClientId),
+    AllegroOrderId UNIQUEIDENTIFIER NOT NULL,
     BuyerLogin NVARCHAR(100) NOT NULL,
     OrderDate DATETIMEOFFSET NOT NULL,
     TotalGrossAmount DECIMAL(12,2) NOT NULL CHECK (TotalGrossAmount >= 0),
     Currency NVARCHAR(3) DEFAULT 'PLN',
-    PaymentStatus NVARCHAR(50),
-    CreatedAt DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET()
+    -- Ensures an order is unique PER client, not globally
+    CONSTRAINT UQ_Client_AllegroOrder UNIQUE (ClientId, AllegroOrderId)
 );
 
--- 3. Order Line Items (1:N Relationship)
 CREATE TABLE OrderLineItems (
     LineItemId INT IDENTITY(1,1) PRIMARY KEY,
     InternalOrderId INT NOT NULL FOREIGN KEY REFERENCES AllegroOrders(InternalId),
@@ -31,7 +44,5 @@ CREATE TABLE OrderLineItems (
     BaseCost DECIMAL(12,2) DEFAULT 0.00 -- COGS (Cost of Goods Sold)
 );
 
--- 4. Indexing for API UPSERT Operations
--- Crucial for a DB maintenance role. This speeds up checking if an order exists.
 CREATE NONCLUSTERED INDEX IX_AllegroOrders_AllegroOrderId
 ON AllegroOrders(AllegroOrderId);
