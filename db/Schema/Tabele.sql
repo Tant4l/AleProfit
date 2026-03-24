@@ -44,5 +44,15 @@ CREATE TABLE OrderLineItems (
     BaseCost DECIMAL(12,2) DEFAULT 0.00 -- COGS (Cost of Goods Sold)
 );
 
+CREATE TABLE AllegroBillingEntries (
+    EntryId UNIQUEIDENTIFIER PRIMARY KEY,
+    ClientId UNIQUEIDENTIFIER FOREIGN KEY REFERENCES Clients(ClientId),
+    AllegroOrderId UNIQUEIDENTIFIER, -- Can be NULL if the fee isn't tied to a specific order
+    FeeType NVARCHAR(100), -- e.g., 'success_fee', 'smart_delivery_fee'
+    Amount DECIMAL(12,2) NOT NULL, -- Usually a negative number for costs
+    Currency NVARCHAR(3) DEFAULT 'PLN',
+    OccurredAt DATETIME2 NOT NULL
+);
+
 CREATE NONCLUSTERED INDEX IX_AllegroOrders_AllegroOrderId
 ON AllegroOrders(AllegroOrderId);
