@@ -14,7 +14,6 @@ namespace AllegroRecruitment
     public class AllegroAuthCallback
     {
         private static readonly HttpClient _httpClient = new HttpClient();
-
         private readonly ILogger<AllegroAuthCallback> _logger;
 
         public AllegroAuthCallback(ILogger<AllegroAuthCallback> logger)
@@ -28,8 +27,9 @@ namespace AllegroRecruitment
             _logger.LogInformation("Processing Allegro OAuth Callback.");
 
             var queryDictionary = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
-            string code = queryDictionary["code"];
-            string state = queryDictionary["state"];
+
+            string? code = queryDictionary["code"];
+            string? state = queryDictionary["state"];
 
             if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state))
             {
@@ -39,7 +39,6 @@ namespace AllegroRecruitment
                 return badResponse;
             }
 
-            // FIX 3: Defensive parsing of the GUID
             if (!Guid.TryParse(state, out Guid parsedClientId))
             {
                 _logger.LogWarning("Callback failed: Invalid state format. Expected GUID, received: {State}", state);
@@ -48,9 +47,12 @@ namespace AllegroRecruitment
                 return badResponse;
             }
 
-            string clientId = Environment.GetEnvironmentVariable("Allegro_ClientId");
-            string clientSecret = Environment.GetEnvironmentVariable("Allegro_ClientSecret");
-            string sqlConnectionString = Environment.GetEnvironmentVariable("SqlConnectionString");
+            string clientId = Environment.GetEnvironmentVariable("Allegro_ClientId")
+                ?? throw new InvalidOperationException("Missing Env Var: Allegro_ClientId");
+            string clientSecret = Environment.GetEnvironmentVariable("Allegro_ClientSecret")
+                ?? throw new InvalidOperationException("Missing Env Var: Allegro_ClientSecret");
+            string sqlConnectionString = Environment.GetEnvironmentVariable("SqlConnectionString")
+                ?? throw new InvalidOperationException("Missing Env Var: SqlConnectionString");
             string redirectUri = "http://localhost:7071/api/AllegroAuthCallback";
 
             var tokenRequest = new HttpRequestMessage(HttpMethod.Post, "https://allegro.pl.allegrosandbox.pl/auth/oauth/token");
@@ -75,11 +77,11 @@ namespace AllegroRecruitment
             }
 
             using JsonDocument doc = JsonDocument.Parse(responseString);
-            string accessToken = doc.RootElement.GetProperty("access_token").GetString();
-            string refreshToken = doc.RootElement.GetProperty("refresh_token").GetString();
+
+            string accessToken = doc.RootElement.GetProperty("access_token").GetString() ?? string.Empty;
+            string refreshToken = doc.RootElement.GetProperty("refresh_token").GetString() ?? string.Empty;
             int expiresIn = doc.RootElement.GetProperty("expires_in").GetInt32();
 
-            // FIX 4: DB Try-Catch block for robust error handling
             try
             {
                 using (SqlConnection conn = new SqlConnection(sqlConnectionString))

@@ -2,4 +2,4 @@
 
 ## AllegroAuthCallback
 
-Zapytanie o autoryzację i czasowy access token
+Zapytanie o autoryzację i czasowy access token.
