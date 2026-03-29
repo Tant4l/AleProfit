@@ -22,7 +22,8 @@ CREATE TABLE OfferMasterData (
     DefaultPurchasePriceNet DECIMAL(12,2) DEFAULT 0.00, -- COGS (Cena hurtowa)
     DefaultPackagingCostNet DECIMAL(12,2) DEFAULT 0.00, -- Karton, taśma
     VatRate DECIMAL(5,2) NOT NULL DEFAULT 23.00, -- Synced from /sale/offers
-    UpdatedAt DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET()
+    UpdatedAt DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET(),
+    IsVatSynced BIT DEFAULT 0
 );
 
 CREATE TABLE AllegroOrders (
@@ -38,6 +39,7 @@ CREATE TABLE AllegroOrders (
     ShippingRevenueGross DECIMAL(12,2) DEFAULT 0.00, -- What buyer paid
     IsDeleted BIT DEFAULT 0, -- Soft delete for pre-fulfillment cancellations
     CreatedAt DATETIMEOFFSET DEFAULT SYSDATETIMEOFFSET(),
+    OrderStatus NVARCHAR(50) DEFAULT 'UNKNOWN',
     CONSTRAINT UQ_Client_Order UNIQUE (ClientId, AllegroOrderId)
 );
 
@@ -46,8 +48,8 @@ CREATE TABLE OrderLineItems (
     InternalOrderId INT NOT NULL FOREIGN KEY REFERENCES AllegroOrders(InternalId),
     AllegroOfferId NVARCHAR(50) NOT NULL FOREIGN KEY REFERENCES OfferMasterData(AllegroOfferId),
     Quantity INT NOT NULL CHECK (Quantity > 0),
-    UnitPriceGross DECIMAL(12,2) NOT NULL
-    -- VAT rate is dynamically pulled from OfferMasterData during View execution
+    UnitPriceGross DECIMAL(12,2) NOT NULL,
+    AllegroLineItemId UNIQUEIDENTIFIER
 );
 
 CREATE TABLE AllegroBillingEntries (
