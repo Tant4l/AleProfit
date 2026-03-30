@@ -1,0 +1,130 @@
+:root {
+    --bg-base: #222222;
+    --bg-surface: #2c2c2c;
+    --accent-allegro: #e57026;
+    --accent-primary: #269be5;
+    --text-main: #e0e0e0;
+    --text-muted: #9e9e9e;
+    --fin-profit: #4caf50;
+    --fin-loss: #f44336;
+}
+
+body {
+    background-color: var(--bg-base);
+    color: var(--text-main);
+    font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+        sans-serif;
+}
+
+.bg-base {
+    background-color: var(--bg-base) !important;
+}
+.bg-surface {
+    background-color: var(--bg-surface) !important;
+}
+
+.text-muted {
+    color: var(--text-muted) !important;
+}
+.text-success {
+    color: var(--fin-profit) !important;
+}
+.text-danger {
+    color: var(--fin-loss) !important;
+}
+.text-primary-accent {
+    color: var(--accent-primary) !important;
+}
+.tracking-wide {
+    letter-spacing: 0.05em;
+}
+
+.card {
+    background-color: var(--bg-surface);
+    border: 1px solid #3d3d3d;
+    border-radius: 8px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.2s ease;
+}
+
+#wrapper {
+    overflow-x: hidden;
+}
+.sidebar {
+    width: 250px;
+    min-height: 100vh;
+    background-color: var(--bg-surface);
+    border-right: 1px solid #3d3d3d;
+    transition: margin 0.25s ease-out;
+}
+@media (max-width: 768px) {
+    .sidebar {
+        margin-left: -250px;
+        position: absolute;
+        z-index: 1000;
+    }
+    #wrapper.toggled .sidebar {
+        margin-left: 0;
+    }
+}
+
+.list-group-item {
+    background-color: transparent;
+    color: var(--text-muted);
+    border: none;
+    padding: 12px 20px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+.list-group-item:hover,
+.list-group-item.active {
+    background-color: rgba(38, 155, 229, 0.1);
+    color: var(--accent-primary);
+    border-left: 4px solid var(--accent-primary);
+}
+
+.btn-primary-accent {
+    background-color: var(--accent-primary);
+    color: white;
+    border: none;
+}
+.btn-primary-accent:hover {
+    background-color: #1a7dbd;
+    color: white;
+}
+.btn-allegro {
+    background-color: var(--accent-allegro);
+    color: white;
+    border: none;
+}
+.btn-allegro:hover {
+    background-color: #cc601d;
+    color: white;
+}
+
+.table-dark {
+    --bs-table-bg: var(--bg-surface);
+    --bs-table-color: var(--text-main);
+    --bs-table-border-color: #3d3d3d;
+    font-variant-numeric: tabular-nums;
+}
+.table-hover tbody tr:hover {
+    color: white;
+    background-color: rgba(255, 255, 255, 0.05);
+    cursor: pointer;
+}
+
+.modal-content {
+    background-color: var(--bg-surface);
+    border: 1px solid #444;
+}
+pre {
+    color: #a6e22e;
+    border: 1px solid #333;
+}
+.font-monospace {
+    font-family:
+        SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+        "Courier New", monospace !important;
+}
