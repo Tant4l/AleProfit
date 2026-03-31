@@ -1,8 +1,22 @@
 const Config = {
   API_BASE_URL: "http://localhost:7071/api",
-  CLIENT_ID: "ee2b6b01-1a32-413a-bc80-895d92add18e",
+  CLIENT_ID:
+    new URLSearchParams(window.location.search).get("clientId") ||
+    localStorage.getItem("activeClientId"),
   ALLEGRO_APP_ID: "32267e2cb34d44399652f70c156e0615",
 };
+
+function showError(message, type = "danger") {
+  const toastEl = document.getElementById("liveToast");
+  const toastBody = document.getElementById("toast-body");
+
+  toastEl.classList.remove("bg-danger", "bg-warning", "bg-success");
+  toastEl.classList.add(`bg-${type}`);
+  toastBody.innerText = message;
+
+  const toast = new bootstrap.Toast(toastEl, { delay: 5000 });
+  toast.show();
+}
 
 const State = {
   currentView: "dashboard-view",
@@ -13,9 +27,26 @@ const State = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const clientIdParam = urlParams.get("clientId");
+
+  if (clientIdParam) {
+    localStorage.setItem("activeClientId", clientIdParam);
+    Config.CLIENT_ID = clientIdParam;
+  } else {
+    Config.CLIENT_ID = localStorage.getItem("activeClientId");
+  }
+
+  if (!Config.CLIENT_ID) {
+    showError(
+      "Sesja wygasła. Proszę wejść przez link z identyfikatorem klienta.",
+      "warning",
+    );
+    return;
+  }
   initDates();
   bindEvents();
-
+  checkConnectionStatus();
   fetchDashboard();
   fetchLedger();
 });
@@ -106,8 +137,10 @@ const formatDate = (dateString) => {
 };
 
 async function fetchDashboard() {
+  toggleLoader(true);
   try {
-    const url = `${Config.API_BASE_URL}/GetDashboardSummary?clientId=${Config.CLIENT_ID}&startDate=${State.startDate}&endDate=${State.endDate}`;
+    const taxRate = document.getElementById("tax-rate-dropdown")?.value || 19.0;
+    const url = `${Config.API_BASE_URL}/GetDashboardSummary?clientId=${Config.CLIENT_ID}&startDate=${State.startDate}&endDate=${State.endDate}&taxRate=${taxRate}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error("API Error");
     const data = await res.json();
@@ -135,6 +168,9 @@ async function fetchDashboard() {
         : "mb-0 text-danger fw-bold";
   } catch (err) {
     console.error("Dashboard Load Error:", err);
+    showError("Nie udało się pobrać danych pulpitu.");
+  } finally {
+    toggleLoader(false);
   }
 }
 
@@ -241,32 +277,94 @@ async function handleSync() {
   }
 }
 
-function renderMasterData() {
+async function renderMasterData() {
   const tbody = document.getElementById("master-tbody");
+  tbody.innerHTML = `<tr><td colspan="4" class="text-center py-3"><div class="spinner-border spinner-border-sm"></div> Loading offers...</td></tr>`;
 
-  State.offersCache.clear();
+  try {
+    const res = await fetch(
+      `${Config.API_BASE_URL}/GetOffers?clientId=${Config.CLIENT_ID}`,
+    );
+    const offers = await res.json();
+    tbody.innerHTML = "";
 
-  if (State.ordersCache.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-4">No active offers. Please sync the ledger first.</td></tr>`;
-    return;
+    if (offers.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-4">No offers found. Run a Data Sync first.</td></tr>`;
+      return;
+    }
+
+    offers.forEach((offer) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="font-monospace text-primary-accent">${offer.offerId}<br><small class="text-muted">${offer.name.substring(0, 30)}...</small></td>
+        <td>
+            <div class="input-group input-group-sm">
+                <input type="number" id="cogs-${offer.offerId}" class="form-control bg-dark text-light border-secondary" value="${offer.cogs}" step="0.01" min="0">
+                <span class="input-group-text bg-surface text-muted border-secondary">PLN</span>
+            </div>
+        </td>
+        <td>
+            <div class="input-group input-group-sm">
+                <input type="number" id="pkg-${offer.offerId}" class="form-control bg-dark text-light border-secondary" value="${offer.pkg}" step="0.01" min="0">
+                <span class="input-group-text bg-surface text-muted border-secondary">PLN</span>
+            </div>
+        </td>
+        <td class="text-end">
+            <button class="btn btn-sm btn-outline-primary px-3" onclick="saveOfferCosts(event, '${offer.offerId}')">Save</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="4" class="text-center text-danger py-4">Failed to load master data.</td></tr>`;
   }
+}
 
-  tbody.innerHTML = `
-        <tr>
-            <td class="font-monospace text-primary-accent">1011502492</td>
-            <td>
-                <div class="input-group input-group-sm">
-                    <input type="number" class="form-control bg-dark text-light border-secondary" value="15.00" step="0.01">
-                    <span class="input-group-text bg-surface text-muted border-secondary">PLN</span>
-                </div>
-            </td>
-            <td>
-                <div class="input-group input-group-sm">
-                    <input type="number" class="form-control bg-dark text-light border-secondary" value="2.50" step="0.01">
-                    <span class="input-group-text bg-surface text-muted border-secondary">PLN</span>
-                </div>
-            </td>
-            <td class="text-end"><button class="btn btn-sm btn-outline-secondary px-3" onclick="alert('Cost Configuration Saved to DB')">Save</button></td>
-        </tr>
-    `;
+async function saveOfferCosts(event, offerId) {
+  const btn = event.target; // Now correctly referenced via passed argument
+  const cogs = document.getElementById(`cogs-${offerId}`).value;
+  const pkg = document.getElementById(`pkg-${offerId}`).value;
+
+  try {
+    const res = await fetch(`${Config.API_BASE_URL}/UpdateOfferCosts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: Config.CLIENT_ID, offerId, cogs, pkg }),
+    });
+
+    if (res.ok) {
+      btn.innerText = "Saved!";
+      btn.className = "btn btn-sm btn-success px-3";
+      setTimeout(() => {
+        btn.innerText = "Save";
+        btn.className = "btn btn-sm btn-outline-primary px-3";
+      }, 2000);
+    } else {
+      showError("Błąd podczas zapisywania kosztów.");
+    }
+  } catch (err) {
+    showError("Błąd połączenia z API.");
+  }
+}
+
+async function checkConnectionStatus() {
+  try {
+    const res = await fetch(
+      `${Config.API_BASE_URL}/GetConnectionStatus?clientId=${Config.CLIENT_ID}`,
+    );
+    const data = await res.json();
+    const btn = document.getElementById("btn-connect-allegro");
+
+    if (data.connected) {
+      btn.innerText = "Allegro Połączone";
+      btn.classList.replace("btn-allegro", "btn-outline-success");
+      btn.disabled = true;
+    }
+  } catch (err) {
+    console.error("Status Check Failed", err);
+  }
+}
+
+function toggleLoader(show) {
+  document.getElementById("loader").style.display = show ? "flex" : "none";
 }

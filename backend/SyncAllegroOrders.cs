@@ -1,9 +1,14 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
+using AllegroRecruitment.Services;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Data.SqlClient;
@@ -11,14 +16,22 @@ using Microsoft.Extensions.Logging;
 
 namespace AllegroRecruitment
 {
+    public record VatSyncEntry(string OfferId, decimal VatRate);
+
     public class SyncAllegroOrders
     {
-        private static readonly HttpClient _httpClient = new HttpClient();
+        private readonly HttpClient _httpClient;
+        private readonly IAllegroTokenService _tokenService;
         private readonly ILogger<SyncAllegroOrders> _logger;
 
-        public SyncAllegroOrders(ILogger<SyncAllegroOrders> logger)
+        public SyncAllegroOrders(
+            ILogger<SyncAllegroOrders> logger, 
+            IAllegroTokenService tokenService, 
+            IHttpClientFactory httpClientFactory)
         {
             _logger = logger;
+            _tokenService = tokenService;
+            _httpClient = httpClientFactory.CreateClient("AllegroClient");
         }
 
         [Function("SyncAllegroOrders")]
@@ -27,101 +40,56 @@ namespace AllegroRecruitment
             _logger.LogInformation("Initiating Allegro Order Sync Pipeline.");
 
             var queryDictionary = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
-            string? clientIdString = queryDictionary["clientId"];
-
-            if (!Guid.TryParse(clientIdString, out Guid clientId))
+            if (!Guid.TryParse(queryDictionary["clientId"], out Guid clientId))
             {
-                var badResponse = req.CreateResponse(System.Net.HttpStatusCode.BadRequest);
+                var badResponse = req.CreateResponse(HttpStatusCode.BadRequest);
                 await badResponse.WriteStringAsync("Valid clientId parameter is required.");
                 return badResponse;
             }
 
             string sqlConnectionString = Environment.GetEnvironmentVariable("SqlConnectionString")
                 ?? throw new InvalidOperationException("Missing SqlConnectionString");
+            string apiBaseUrl = Environment.GetEnvironmentVariable("Allegro_ApiBaseUrl")
+                ?? throw new InvalidOperationException("Missing Allegro_ApiBaseUrl");
 
-            string accessToken = string.Empty;
-            string refreshToken = string.Empty;
-            bool needsRefresh = false;
-
-            using (SqlConnection conn = new SqlConnection(sqlConnectionString))
+            string accessToken;
+            try
             {
-                await conn.OpenAsync();
-                using (SqlCommand cmd = new SqlCommand("sp_GetValidToken", conn))
-                {
-                    cmd.CommandType = System.Data.CommandType.StoredProcedure;
-                    cmd.Parameters.AddWithValue("@ClientId", clientId);
-                    using (var reader = await cmd.ExecuteReaderAsync())
-                    {
-                        if (await reader.ReadAsync())
-                        {
-                            accessToken = reader.GetString(0);
-                            refreshToken = reader.GetString(1);
-                            needsRefresh = reader.GetInt32(2) == 1;
-                        }
-                        else
-                        {
-                            var unauthResponse = req.CreateResponse(System.Net.HttpStatusCode.Unauthorized);
-                            await unauthResponse.WriteStringAsync("No valid Allegro tokens found.");
-                            return unauthResponse;
-                        }
-                    }
-                }
+                accessToken = await _tokenService.GetValidTokenAsync(clientId);
             }
-
-            if (needsRefresh)
+            catch (Exception ex)
             {
-                _logger.LogInformation("Token expired. Executing refresh flow.");
-                string allegroClientId = Environment.GetEnvironmentVariable("Allegro_ClientId") ?? throw new Exception("Missing ClientId");
-                string allegroClientSecret = Environment.GetEnvironmentVariable("Allegro_ClientSecret") ?? throw new Exception("Missing Secret");
-
-                var refreshRequest = new HttpRequestMessage(HttpMethod.Post, "https://allegro.pl.allegrosandbox.pl/auth/oauth/token");
-                var authBytes = Encoding.ASCII.GetBytes($"{allegroClientId}:{allegroClientSecret}");
-                refreshRequest.Headers.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(authBytes));
-                refreshRequest.Content = new StringContent($"grant_type=refresh_token&refresh_token={refreshToken}", Encoding.UTF8, "application/x-www-form-urlencoded");
-
-                var refreshResponse = await _httpClient.SendAsync(refreshRequest);
-                if (!refreshResponse.IsSuccessStatusCode) throw new Exception("Failed to refresh Allegro token.");
-
-                using JsonDocument doc = JsonDocument.Parse(await refreshResponse.Content.ReadAsStringAsync());
-                accessToken = doc.RootElement.GetProperty("access_token").GetString() ?? string.Empty;
-                string newRefreshToken = doc.RootElement.GetProperty("refresh_token").GetString() ?? string.Empty;
-                int expiresIn = doc.RootElement.GetProperty("expires_in").GetInt32();
-
-                using (SqlConnection conn = new SqlConnection(sqlConnectionString))
-                {
-                    await conn.OpenAsync();
-                    using (SqlCommand cmd = new SqlCommand("sp_UpsertClientToken", conn))
-                    {
-                        cmd.CommandType = System.Data.CommandType.StoredProcedure;
-                        cmd.Parameters.AddWithValue("@ClientId", clientId);
-                        cmd.Parameters.AddWithValue("@AccessToken", accessToken);
-                        cmd.Parameters.AddWithValue("@RefreshToken", newRefreshToken);
-                        cmd.Parameters.AddWithValue("@ExpiresInSeconds", expiresIn);
-                        await cmd.ExecuteNonQueryAsync();
-                    }
-                }
+                _logger.LogError(ex, "Failed to retrieve a valid Allegro token for client {ClientId}", clientId);
+                var unauthResponse = req.CreateResponse(HttpStatusCode.Unauthorized);
+                await unauthResponse.WriteStringAsync("Authentication failed: No valid tokens available.");
+                return unauthResponse;
             }
 
             int offset = 0;
-            int limit = 100;
+            const int limit = 100;
             bool hasMoreData = true;
             int totalOrdersProcessed = 0;
 
             while (hasMoreData)
             {
-                string apiUrl = $"https://api.allegro.pl.allegrosandbox.pl/order/checkout-forms?offset={offset}&limit={limit}";
-                var ordersRequest = new HttpRequestMessage(HttpMethod.Get, apiUrl);
+                string apiUrl = $"{apiBaseUrl}/order/checkout-forms?offset={offset}&limit={limit}";
+                
+                using var ordersRequest = new HttpRequestMessage(HttpMethod.Get, apiUrl);
                 ordersRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+                
+                // Prioritize Allegro vendor-specific JSON, fallback to standard JSON for errors
+                ordersRequest.Headers.Accept.Clear();
                 ordersRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.allegro.public.v1+json"));
+                ordersRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json", 0.8));
 
-                var ordersResponse = await _httpClient.SendAsync(ordersRequest);
+                using var ordersResponse = await _httpClient.SendAsync(ordersRequest, HttpCompletionOption.ResponseContentRead);
                 string ordersJson = await ordersResponse.Content.ReadAsStringAsync();
 
                 if (!ordersResponse.IsSuccessStatusCode)
                 {
-                    _logger.LogError("Allegro API Sync Failed: {Response}", ordersJson);
-                    var errResponse = req.CreateResponse(System.Net.HttpStatusCode.BadGateway);
-                    await errResponse.WriteStringAsync("Allegro API Error.");
+                    _logger.LogError("Allegro API Sync Failed: {StatusCode} - {Response}", (int)ordersResponse.StatusCode, ordersJson);
+                    var errResponse = req.CreateResponse(HttpStatusCode.BadGateway);
+                    await errResponse.WriteStringAsync("Allegro API Error during order fetch.");
                     return errResponse;
                 }
 
@@ -149,82 +117,88 @@ namespace AllegroRecruitment
                         }
                     }
                     totalOrdersProcessed += currentBatchCount;
-                    offset += limit; // Increment offset to fetch next page
+                    offset += limit;
                 }
                 catch (SqlException sqlEx)
                 {
-                    _logger.LogCritical(sqlEx, "SQL Parsing failed for payload: {OrdersJson}", ordersJson);
-                    var errResponse = req.CreateResponse(System.Net.HttpStatusCode.InternalServerError);
-                    await errResponse.WriteStringAsync("Database schema violation during JSON shredding.");
+                    _logger.LogCritical(sqlEx, "SQL Error during Order JSON processing for client {ClientId}", clientId);
+                    var errResponse = req.CreateResponse(HttpStatusCode.InternalServerError);
+                    await errResponse.WriteStringAsync("Database persistence failed.");
                     return errResponse;
                 }
             }
 
-            var unsyncedOffers = new System.Collections.Generic.List<string>();
-
+            var unsyncedOffers = new List<string>();
             using (SqlConnection conn = new SqlConnection(sqlConnectionString))
             {
                 await conn.OpenAsync();
-                using (SqlCommand cmd = new SqlCommand("SELECT AllegroOfferId FROM OfferMasterData WHERE IsVatSynced = 0 AND ClientId = @ClientId", conn))
+                string query = "SELECT AllegroOfferId FROM OfferMasterData WHERE IsVatSynced = 0 AND ClientId = @ClientId";
+                using (SqlCommand cmd = new SqlCommand(query, conn))
                 {
                     cmd.Parameters.AddWithValue("@ClientId", clientId);
                     using (var reader = await cmd.ExecuteReaderAsync())
                     {
-                        while (await reader.ReadAsync())
-                        {
-                            unsyncedOffers.Add(reader.GetString(0));
-                        }
+                        while (await reader.ReadAsync()) unsyncedOffers.Add(reader.GetString(0));
                     }
                 }
             }
 
-            foreach (var offerId in unsyncedOffers)
-            {
-                try
-                {
-                    var offerRequest = new HttpRequestMessage(HttpMethod.Get, $"https://api.allegro.pl.allegrosandbox.pl/sale/offers/{offerId}");
+            var vatResults = new ConcurrentBag<VatSyncEntry>();
+            using var semaphore = new SemaphoreSlim(10); 
+
+            var tasks = unsyncedOffers.Select(async offerId => {
+                await semaphore.WaitAsync();
+                try {
+                    var offerRequest = new HttpRequestMessage(HttpMethod.Get, $"{apiBaseUrl}/sale/offers/{offerId}");
                     offerRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
                     offerRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.allegro.public.v1+json"));
 
                     var offerResponse = await _httpClient.SendAsync(offerRequest);
-                    if (offerResponse.IsSuccessStatusCode)
-                    {
-                        using JsonDocument offerDoc = JsonDocument.Parse(await offerResponse.Content.ReadAsStringAsync());
-
-                        decimal realVatRate = 23.00m; // Fallback
-
-                        if (offerDoc.RootElement.TryGetProperty("tax", out var taxElement) &&
-                            taxElement.TryGetProperty("rate", out var rateElement))
-                        {
-                            string rateString = rateElement.GetString() ?? "23.00";
-                            if (rateString.Contains("EXEMPT", StringComparison.OrdinalIgnoreCase)) {
-                                realVatRate = 0.00m;
-                            } else {
-                                decimal.TryParse(rateString, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out realVatRate);
-                            }
+                    if (offerResponse.IsSuccessStatusCode) {
+                        string offerJson = await offerResponse.Content.ReadAsStringAsync();
+                        using JsonDocument offerDoc = JsonDocument.Parse(offerJson);
+                        
+                        decimal realVatRate = 23.00m;
+                        if (offerDoc.RootElement.TryGetProperty("tax", out var tax) && tax.TryGetProperty("rate", out var rate)) {
+                            string rateStr = rate.GetString() ?? "23.00";
+                            realVatRate = rateStr.Contains("EXEMPT") ? 0.00m : decimal.Parse(rateStr, System.Globalization.CultureInfo.InvariantCulture);
                         }
+                        vatResults.Add(new VatSyncEntry(offerId, realVatRate));
+                    }
+                } 
+                catch (Exception ex) {
+                    _logger.LogWarning(ex, "Failed to enrichment VAT for offer {OfferId}", offerId);
+                }
+                finally { semaphore.Release(); }
+            });
 
-                        using (SqlConnection conn = new SqlConnection(sqlConnectionString))
-                        {
-                            await conn.OpenAsync();
-                            using (SqlCommand updateCmd = new SqlCommand("UPDATE OfferMasterData SET VatRate = @VatRate, IsVatSynced = 1, UpdatedAt = SYSDATETIMEOFFSET() WHERE AllegroOfferId = @OfferId", conn))
-                            {
-                                updateCmd.Parameters.AddWithValue("@VatRate", realVatRate);
-                                updateCmd.Parameters.AddWithValue("@OfferId", offerId);
-                                await updateCmd.ExecuteNonQueryAsync();
-                            }
+            await Task.WhenAll(tasks);
+
+            if (!vatResults.IsEmpty) {
+                try 
+                {
+                    using (SqlConnection conn = new SqlConnection(sqlConnectionString)) {
+                        await conn.OpenAsync();
+                        using (SqlCommand batchCmd = new SqlCommand("sp_BatchUpdateOfferVat", conn)) {
+                            batchCmd.CommandType = System.Data.CommandType.StoredProcedure;
+                            batchCmd.Parameters.AddWithValue("@ClientId", clientId);
+                            
+                            // Use PascalCase serialization to match SQL OPENJSON expectation
+                            var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = null };
+                            batchCmd.Parameters.AddWithValue("@VatDataJson", JsonSerializer.Serialize(vatResults, jsonOptions));
+                            
+                            await batchCmd.ExecuteNonQueryAsync();
                         }
-                        _logger.LogInformation("Successfully synced exact VAT Rate ({Rate}%) for Offer {OfferId}.", realVatRate, offerId);
                     }
                 }
-                catch (Exception ex)
+                catch (SqlException sqlEx)
                 {
-                    _logger.LogWarning(ex, "Failed to sync VAT for Offer {OfferId}.", offerId);
+                    _logger.LogError(sqlEx, "Failed to batch update VAT rates for client {ClientId}", clientId);
                 }
             }
 
-            var successResponse = req.CreateResponse(System.Net.HttpStatusCode.OK);
-            await successResponse.WriteStringAsync($"Sync Complete. Successfully processed {totalOrdersProcessed} orders.");
+            var successResponse = req.CreateResponse(HttpStatusCode.OK);
+            await successResponse.WriteStringAsync($"Sync Complete. Processed {totalOrdersProcessed} orders. Updated {vatResults.Count} VAT rates.");
             return successResponse;
         }
     }

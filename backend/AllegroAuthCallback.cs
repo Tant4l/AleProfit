@@ -1,4 +1,5 @@
 using System;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -13,12 +14,13 @@ namespace AllegroRecruitment
 {
     public class AllegroAuthCallback
     {
-        private static readonly HttpClient _httpClient = new HttpClient();
+        private readonly HttpClient _httpClient;
         private readonly ILogger<AllegroAuthCallback> _logger;
 
-        public AllegroAuthCallback(ILogger<AllegroAuthCallback> logger)
+        public AllegroAuthCallback(ILogger<AllegroAuthCallback> logger, HttpClient httpClient)
         {
             _logger = logger;
+            _httpClient = httpClient;
         }
 
         [Function("AllegroAuthCallback")]
@@ -26,90 +28,71 @@ namespace AllegroRecruitment
         {
             _logger.LogInformation("Processing Allegro OAuth Callback.");
 
-            var queryDictionary = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+            var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
+            string? code = query["code"];
+            string? state = query["state"]; // Expected to be the ClientId GUID
 
-            string? code = queryDictionary["code"];
-            string? state = queryDictionary["state"];
-
-            if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state))
+            if (string.IsNullOrEmpty(code) || !Guid.TryParse(state, out Guid clientId))
             {
-                _logger.LogWarning("Callback failed: Missing code or state.");
-                var badResponse = req.CreateResponse(System.Net.HttpStatusCode.BadRequest);
-                await badResponse.WriteStringAsync("Missing code or state parameter.");
+                var badResponse = req.CreateResponse(HttpStatusCode.BadRequest);
+                await badResponse.WriteStringAsync("Invalid code or state parameter.");
                 return badResponse;
             }
 
-            if (!Guid.TryParse(state, out Guid parsedClientId))
-            {
-                _logger.LogWarning("Callback failed: Invalid state format. Expected GUID, received: {State}", state);
-                var badResponse = req.CreateResponse(System.Net.HttpStatusCode.BadRequest);
-                await badResponse.WriteStringAsync("Malformed state parameter.");
-                return badResponse;
-            }
+            // Environment Configuration
+            string authBaseUrl = Environment.GetEnvironmentVariable("Allegro_AuthBaseUrl") ?? "https://allegro.pl.allegrosandbox.pl";
+            string appClientId = Environment.GetEnvironmentVariable("Allegro_ClientId") ?? throw new Exception("Missing Allegro_ClientId");
+            string appClientSecret = Environment.GetEnvironmentVariable("Allegro_ClientSecret") ?? throw new Exception("Missing Allegro_ClientSecret");
+            string redirectUri = Environment.GetEnvironmentVariable("Allegro_RedirectUri") ?? throw new Exception("Missing Allegro_RedirectUri");
+            string sqlConn = Environment.GetEnvironmentVariable("SqlConnectionString") ?? throw new Exception("Missing SqlConnectionString");
 
-            string clientId = Environment.GetEnvironmentVariable("Allegro_ClientId")
-                ?? throw new InvalidOperationException("Missing Env Var: Allegro_ClientId");
-            string clientSecret = Environment.GetEnvironmentVariable("Allegro_ClientSecret")
-                ?? throw new InvalidOperationException("Missing Env Var: Allegro_ClientSecret");
-            string sqlConnectionString = Environment.GetEnvironmentVariable("SqlConnectionString")
-                ?? throw new InvalidOperationException("Missing Env Var: SqlConnectionString");
-            string redirectUri = "http://localhost:7071/api/AllegroAuthCallback";
+            // 1. Token Exchange Request
+            var tokenRequest = new HttpRequestMessage(HttpMethod.Post, $"{authBaseUrl}/auth/oauth/token");
+            var authHeader = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{appClientId}:{appClientSecret}"));
+            tokenRequest.Headers.Authorization = new AuthenticationHeaderValue("Basic", authHeader);
 
-            var tokenRequest = new HttpRequestMessage(HttpMethod.Post, "https://allegro.pl.allegrosandbox.pl/auth/oauth/token");
-            var authBytes = Encoding.ASCII.GetBytes($"{clientId}:{clientSecret}");
-            tokenRequest.Headers.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(authBytes));
-
-            var content = new StringContent(
-                $"grant_type=authorization_code&code={code}&redirect_uri={redirectUri}",
-                Encoding.UTF8,
-                "application/x-www-form-urlencoded");
-            tokenRequest.Content = content;
+            var postData = $"grant_type=authorization_code&code={code}&redirect_uri={Uri.EscapeDataString(redirectUri)}";
+            tokenRequest.Content = new StringContent(postData, Encoding.UTF8, "application/x-www-form-urlencoded");
 
             var response = await _httpClient.SendAsync(tokenRequest);
-            string responseString = await response.Content.ReadAsStringAsync();
+            string responseBody = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogError("Allegro API Token Exchange Failed. Status: {Status}, Response: {Response}", response.StatusCode, responseString);
-                var errResponse = req.CreateResponse(System.Net.HttpStatusCode.InternalServerError);
-                await errResponse.WriteStringAsync("Failed to negotiate with Allegro API.");
-                return errResponse;
+                _logger.LogError("Token Exchange Failed: {Body}", responseBody);
+                return req.CreateResponse(HttpStatusCode.BadGateway);
             }
 
-            using JsonDocument doc = JsonDocument.Parse(responseString);
-
-            string accessToken = doc.RootElement.GetProperty("access_token").GetString() ?? string.Empty;
-            string refreshToken = doc.RootElement.GetProperty("refresh_token").GetString() ?? string.Empty;
-            int expiresIn = doc.RootElement.GetProperty("expires_in").GetInt32();
+            // 2. Parse and Persist
+            using JsonDocument doc = JsonDocument.Parse(responseBody);
+            string access = doc.RootElement.GetProperty("access_token").GetString()!;
+            string refresh = doc.RootElement.GetProperty("refresh_token").GetString()!;
+            int expires = doc.RootElement.GetProperty("expires_in").GetInt32();
 
             try
             {
-                using (SqlConnection conn = new SqlConnection(sqlConnectionString))
+                using (var conn = new SqlConnection(sqlConn))
                 {
                     await conn.OpenAsync();
-                    using (SqlCommand cmd = new SqlCommand("sp_UpsertClientToken", conn))
+                    using (var cmd = new SqlCommand("sp_UpsertClientToken", conn))
                     {
                         cmd.CommandType = System.Data.CommandType.StoredProcedure;
-                        cmd.Parameters.AddWithValue("@ClientId", parsedClientId);
-                        cmd.Parameters.AddWithValue("@AccessToken", accessToken);
-                        cmd.Parameters.AddWithValue("@RefreshToken", refreshToken);
-                        cmd.Parameters.AddWithValue("@ExpiresInSeconds", expiresIn);
-
+                        cmd.Parameters.AddWithValue("@ClientId", clientId);
+                        cmd.Parameters.AddWithValue("@AccessToken", access);
+                        cmd.Parameters.AddWithValue("@RefreshToken", refresh);
+                        cmd.Parameters.AddWithValue("@ExpiresInSeconds", expires);
                         await cmd.ExecuteNonQueryAsync();
-                        _logger.LogInformation("Successfully secured token in database for Client: {ClientId}", parsedClientId);
                     }
                 }
             }
-            catch (SqlException sqlEx)
+            catch (SqlException ex)
             {
-                _logger.LogCritical(sqlEx, "Database operation failed while saving tokens.");
-                var errResponse = req.CreateResponse(System.Net.HttpStatusCode.InternalServerError);
-                await errResponse.WriteStringAsync("Database persistence failed.");
-                return errResponse;
+                _logger.LogCritical(ex, "Database persistence failed for client {ClientId}", clientId);
+                return req.CreateResponse(HttpStatusCode.InternalServerError);
             }
 
-            var successResponse = req.CreateResponse(System.Net.HttpStatusCode.OK);
-            await successResponse.WriteStringAsync("Authentication successful! Token secured in database. You may close this window.");
+            var successResponse = req.CreateResponse(HttpStatusCode.OK);
+            await successResponse.WriteStringAsync("Authentication successful. Tokens secured.");
             return successResponse;
         }
     }

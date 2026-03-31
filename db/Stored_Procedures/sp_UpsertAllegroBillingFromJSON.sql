@@ -4,53 +4,23 @@ CREATE OR ALTER PROCEDURE sp_UpsertAllegroBillingFromJSON
 AS
 BEGIN
     SET NOCOUNT ON;
+    -- Use a Temp Table to reduce the lock duration on the target table
+    SELECT * INTO #RawBilling FROM OPENJSON(@BillingJson, '$.billingEntries')
+    WITH (
+        BillingEntryId UNIQUEIDENTIFIER '$.id',
+        FeeType NVARCHAR(100) '$.type.id',
+        Amount DECIMAL(12,2) '$.value.amount',
+        VatRate DECIMAL(5,2) '$.tax.percentage', -- Capture actual rate from API
+        OccurredAt DATETIMEOFFSET '$.occurredAt',
+        OrderId UNIQUEIDENTIFIER '$.order.id'
+    );
 
-    BEGIN TRY
-        BEGIN TRANSACTION;
-
-        SELECT * INTO #TempBilling
-        FROM OPENJSON(@BillingJson, '$.billingEntries')
-        WITH (
-            BillingEntryId UNIQUEIDENTIFIER '$.id',
-            OccurredAt DATETIMEOFFSET '$.occurredAt',
-            FeeType NVARCHAR(100) '$.type.id',
-            Amount DECIMAL(12,2) '$.value.amount',
-            AllegroOrderId UNIQUEIDENTIFIER '$.order.id'
-        );
-
-        MERGE INTO AllegroBillingEntries WITH (HOLDLOCK, SERIALIZABLE) AS Target
-        USING #TempBilling AS Source
-        ON Target.BillingEntryId = Source.BillingEntryId
-        WHEN MATCHED THEN
-            UPDATE SET
-                FeeType = Source.FeeType,
-                Amount = Source.Amount,
-                AllegroOrderId = Source.AllegroOrderId
+    BEGIN TRANSACTION;
+        -- UPDLOCK ensures we get an update lock immediately, preventing circular wait deadlocks
+        MERGE INTO AllegroBillingEntries WITH (UPDLOCK, HOLDLOCK) AS Target
+        USING #RawBilling AS Source ON Target.BillingEntryId = Source.BillingEntryId
         WHEN NOT MATCHED THEN
-            INSERT (BillingEntryId, ClientId, AllegroOrderId, FeeType, Amount, OccurredAt)
-            VALUES (Source.BillingEntryId, @ClientId, Source.AllegroOrderId, Source.FeeType, Source.Amount, Source.OccurredAt);
-
-        DECLARE @MaxOccurredAt DATETIMEOFFSET = (SELECT MAX(OccurredAt) FROM #TempBilling);
-
-        IF @MaxOccurredAt IS NOT NULL
-        BEGIN
-            UPDATE Clients
-            SET LastBillingSyncAt =
-                CASE
-                    WHEN LastBillingSyncAt IS NULL THEN @MaxOccurredAt
-                    WHEN @MaxOccurredAt > LastBillingSyncAt THEN @MaxOccurredAt
-                    ELSE LastBillingSyncAt
-                END
-            WHERE ClientId = @ClientId;
-        END
-
-        DROP TABLE #TempBilling;
-
-        COMMIT TRANSACTION;
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
-        THROW;
-    END CATCH
+            INSERT (BillingEntryId, ClientId, AllegroOrderId, FeeType, Amount, VatRate, OccurredAt)
+            VALUES (Source.BillingEntryId, @ClientId, Source.OrderId, Source.FeeType, Source.Amount, ISNULL(Source.VatRate, 23.00), Source.OccurredAt);
+    COMMIT TRANSACTION;
 END;
-GO
