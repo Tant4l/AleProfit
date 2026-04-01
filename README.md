@@ -1,7 +1,8 @@
 # AleProfit
 
 https://gentle-river-035083a03.6.azurestaticapps.net/?clientId=ee2b6b01-1a32-413a-bc80-895d92add18e - Adres aplikacji
-*Aby zobaczyć aktualne po zmianach należy kliknąć "Sync Data" w prawym górnym rogu.*
+
+*Aby zobaczyć aktualne dane po zmianach należy kliknąć "Sync Data" w prawym górnym rogu.*
 
 AleProfit to system analityczny służący do precyzyjnego wyliczania rentowności (P&L) sprzedaży w serwisie Allegro. Aplikacja agreguje dane o zamówieniach, kosztach logistycznych oraz prowizjach, dostarczając sprzedawcy informację o rzeczywistym zysku netto po uwzględnieniu podatków dochodowych i VAT.
 
