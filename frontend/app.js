@@ -110,9 +110,8 @@ function loadView(viewId) {
 }
 
 function handleConnectAllegro() {
-  const redirectUri = encodeURIComponent(
-    "aleprofit-functionapp-f3fqgwbzavheg4ad.westeurope-01.azurewebsites.net/api/AllegroAuthCallback",
-  );
+  const liveCallback = "https://aleprofit-functionapp-f3fqgwbzavheg4ad.westeurope-01.azurewebsites.net/api/AllegroAuthCallback";
+  const redirectUri = encodeURIComponent(liveCallback);
   const oauthUrl = `https://allegro.pl.allegrosandbox.pl/auth/oauth/authorize?response_type=code&client_id=${Config.ALLEGRO_APP_ID}&redirect_uri=${redirectUri}&state=${Config.CLIENT_ID}`;
   window.location.href = oauthUrl;
 }
