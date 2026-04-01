@@ -61,18 +61,18 @@ namespace AllegroRecruitment
                     await conn.OpenAsync();
 
                     string sqlQuery = @"
-                        SELECT 
-                            AllegroOrderId, 
-                            OrderDatePL, 
-                            InternalStatus, 
-                            IsB2b, 
-                            ProductSummary, -- Index 4
-                            RevenueGross, 
-                            RevenueNet, 
-                            TotalCogsNet, 
-                            TotalPackagingNet, 
-                            CommissionsNet, 
-                            CourierCostsNet, 
+                        SELECT
+                            AllegroOrderId,
+                            OrderDatePL,
+                            InternalStatus,
+                            IsB2b,
+                            ProductSummary,
+                            RevenueGross,
+                            RevenueNet,
+                            TotalCogsNet,
+                            TotalPackagingNet,
+                            CommissionsNet,
+                            CourierCostsNet,
                             IncomeBeforeTax
                         FROM vw_OrderProfitability_Detailed
                         WHERE ClientId = @ClientId
@@ -94,10 +94,10 @@ namespace AllegroRecruitment
                             while (await reader.ReadAsync())
                             {
                                 orders.Add(new OrderProfitabilityDto(
-                                    reader.GetGuid(0).ToString(),      
-                                    reader.GetDateTimeOffset(1),       
-                                    reader.GetString(2),               
-                                    reader.GetBoolean(3),              
+                                    reader.GetGuid(0).ToString(),
+                                    reader.GetDateTimeOffset(1),
+                                    reader.GetString(2),
+                                    reader.GetBoolean(3),
                                     reader.GetString(4),               // ProductSummary
                                     reader.GetDecimal(5),              // RevenueGross
                                     reader.GetDecimal(6),              // RevenueNet
