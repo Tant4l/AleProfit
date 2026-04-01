@@ -16,7 +16,7 @@ using Microsoft.Extensions.Logging;
 
 namespace AllegroRecruitment
 {
-    public record VatSyncEntry(string OfferId, decimal VatRate);
+    public record VatSyncEntry(string OfferId, string ProductName, decimal VatRate);
 
     public class SyncAllegroOrders
     {
@@ -155,19 +155,30 @@ namespace AllegroRecruitment
 
                     var offerResponse = await _httpClient.SendAsync(offerRequest);
                     if (offerResponse.IsSuccessStatusCode) {
-                        string offerJson = await offerResponse.Content.ReadAsStringAsync();
-                        using JsonDocument offerDoc = JsonDocument.Parse(offerJson);
+                        using JsonDocument offerDoc = JsonDocument.Parse(await offerResponse.Content.ReadAsStringAsync());
                         
+                        string realName = offerDoc.RootElement.TryGetProperty("name", out var nameProp) 
+                            ? nameProp.GetString() ?? "Unknown Product"
+                            : "Unknown Product";
+
                         decimal realVatRate = 23.00m;
                         if (offerDoc.RootElement.TryGetProperty("tax", out var tax) && tax.TryGetProperty("rate", out var rate)) {
                             string rateStr = rate.GetString() ?? "23.00";
                             realVatRate = rateStr.Contains("EXEMPT") ? 0.00m : decimal.Parse(rateStr, System.Globalization.CultureInfo.InvariantCulture);
                         }
-                        vatResults.Add(new VatSyncEntry(offerId, realVatRate));
+
+                        vatResults.Add(new VatSyncEntry(offerId, realName, realVatRate));
+                    }
+                    else 
+                    {
+                        // FIX: If API fails (e.g. 404 for archived Sandbox offers), 
+                        // force sync completion with fallback data to prevent infinite retry loop.
+                        vatResults.Add(new VatSyncEntry(offerId, null, 23.00m));
                     }
                 } 
                 catch (Exception ex) {
-                    _logger.LogWarning(ex, "Failed to enrichment VAT for offer {OfferId}", offerId);
+                    _logger.LogWarning("Failed to enrich metadata for offer {OfferId}: {Msg}", offerId, ex.Message);
+                    vatResults.Add(new VatSyncEntry(offerId, null, 23.00m));
                 }
                 finally { semaphore.Release(); }
             });
@@ -183,7 +194,6 @@ namespace AllegroRecruitment
                             batchCmd.CommandType = System.Data.CommandType.StoredProcedure;
                             batchCmd.Parameters.AddWithValue("@ClientId", clientId);
                             
-                            // Use PascalCase serialization to match SQL OPENJSON expectation
                             var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = null };
                             batchCmd.Parameters.AddWithValue("@VatDataJson", JsonSerializer.Serialize(vatResults, jsonOptions));
                             

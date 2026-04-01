@@ -91,8 +91,11 @@ namespace AllegroRecruitment
                 return req.CreateResponse(HttpStatusCode.InternalServerError);
             }
 
-            var successResponse = req.CreateResponse(HttpStatusCode.OK);
-            await successResponse.WriteStringAsync("Authentication successful. Tokens secured.");
+            string frontendUrl = Environment.GetEnvironmentVariable("Frontend_Url") 
+                ?? throw new Exception("Missing Frontend_Url");
+
+            var successResponse = req.CreateResponse(HttpStatusCode.Found); // HTTP 302
+            successResponse.Headers.Add("Location", $"{frontendUrl}?clientId={clientId}"); 
             return successResponse;
         }
     }

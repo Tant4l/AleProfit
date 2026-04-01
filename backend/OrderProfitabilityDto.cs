@@ -5,6 +5,7 @@ namespace AllegroRecruitment.Models
         DateTimeOffset OrderDatePL,
         string InternalStatus,
         bool IsB2b,
+        string ProductSummary,
         decimal RevenueGross,
         decimal RevenueNet,
         decimal TotalCogsNet,

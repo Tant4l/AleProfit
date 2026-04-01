@@ -66,6 +66,7 @@ namespace AllegroRecruitment
                             OrderDatePL, 
                             InternalStatus, 
                             IsB2b, 
+                            ProductSummary, -- Index 4
                             RevenueGross, 
                             RevenueNet, 
                             TotalCogsNet, 
@@ -75,8 +76,8 @@ namespace AllegroRecruitment
                             IncomeBeforeTax
                         FROM vw_OrderProfitability_Detailed
                         WHERE ClientId = @ClientId
-                          AND OrderDatePL >= @StartDate
-                          AND OrderDatePL <= @EndDate
+                        AND OrderDatePL >= @StartDate
+                        AND OrderDatePL <= @EndDate
                         ORDER BY OrderDatePL DESC
                         OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY;";
 
@@ -93,17 +94,18 @@ namespace AllegroRecruitment
                             while (await reader.ReadAsync())
                             {
                                 orders.Add(new OrderProfitabilityDto(
-                                    reader.GetGuid(0).ToString(),      // AllegroOrderId
-                                    reader.GetDateTimeOffset(1),       // OrderDatePL
-                                    reader.GetString(2),               // InternalStatus
-                                    reader.GetBoolean(3),              // IsB2b
-                                    reader.GetDecimal(4),              // RevenueGross
-                                    reader.GetDecimal(5),              // RevenueNet
-                                    reader.GetDecimal(6),              // TotalCogsNet
-                                    reader.GetDecimal(7),              // TotalPackagingNet
-                                    reader.GetDecimal(8),              // CommissionsNet
-                                    reader.GetDecimal(9),              // CourierCostsNet
-                                    reader.GetDecimal(10)              // IncomeBeforeTax
+                                    reader.GetGuid(0).ToString(),      
+                                    reader.GetDateTimeOffset(1),       
+                                    reader.GetString(2),               
+                                    reader.GetBoolean(3),              
+                                    reader.GetString(4),               // ProductSummary
+                                    reader.GetDecimal(5),              // RevenueGross
+                                    reader.GetDecimal(6),              // RevenueNet
+                                    reader.GetDecimal(7),              // TotalCogsNet
+                                    reader.GetDecimal(8),              // TotalPackagingNet
+                                    reader.GetDecimal(9),              // CommissionsNet
+                                    reader.GetDecimal(10),             // CourierCostsNet
+                                    reader.GetDecimal(11)              // IncomeBeforeTax
                                 ));
                             }
                         }
