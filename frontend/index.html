@@ -20,7 +20,7 @@
                 <div
                     class="sidebar-heading text-center py-4 border-bottom border-secondary"
                 >
-                    <h5 class="fw-bold mb-0 text-white">AleDrogo</h5>
+                    <h5 class="fw-bold mb-0 text-white">Klient: AleDrogo</h5>
                     <small class="text-muted">NIP: 5327207317</small>
                 </div>
                 <div class="list-group list-group-flush mt-2">
@@ -113,9 +113,7 @@
                         <div class="row g-3 mb-4">
                             <div class="col-md-3">
                                 <div class="card p-3 h-100">
-                                    <span class="text-muted small"
-                                        >Revenue (Net)</span
-                                    >
+                                    <span class="text-muted small">Zyski</span>
                                     <h3
                                         id="dash-revenue"
                                         class="mb-0 text-white"
@@ -127,7 +125,8 @@
                             <div class="col-md-3">
                                 <div class="card p-3 h-100">
                                     <span class="text-muted small"
-                                        >Total Deductible Costs</span
+                                        >Całkowite koszty podlegające
+                                        odliczeniu</span
                                     >
                                     <h3 id="dash-costs" class="mb-0 text-white">
                                         0,00 PLN
@@ -137,7 +136,7 @@
                             <div class="col-md-3">
                                 <div class="card p-3 h-100">
                                     <span class="text-muted small"
-                                        >Estimated Tax (19%)</span
+                                        >Szacowany podatek</span
                                     >
                                     <h3 id="dash-tax" class="mb-0 text-danger">
                                         0,00 PLN
@@ -150,7 +149,7 @@
                                 >
                                     <span
                                         class="text-muted small text-uppercase tracking-wide"
-                                        >Pure Profit (Zysk Netto)</span
+                                        >Zysk Netto</span
                                     >
                                     <h2
                                         id="dash-profit"
@@ -168,7 +167,7 @@
                         class="view-section"
                         style="display: none"
                     >
-                        <h4 class="mb-4">Transactional Audit Ledger</h4>
+                        <h4 class="mb-4">Rejest Transakcji</h4>
                         <div class="card">
                             <div class="table-responsive">
                                 <table
@@ -176,16 +175,18 @@
                                 >
                                     <thead>
                                         <tr>
-                                            <th>Date (PL)</th>
-                                            <th>Order ID</th>
+                                            <th>Data</th>
+                                            <th>ID zamówienia</th>
                                             <th class="text-end">
-                                                Gross Revenue
+                                                Zysk brutto
                                             </th>
                                             <th class="text-end">
-                                                Total Costs (Net)
+                                                Suma kosztów (Net)
                                             </th>
-                                            <th class="text-end">Income Tax</th>
-                                            <th class="text-end">Net Profit</th>
+                                            <th class="text-end">Podatek</th>
+                                            <th class="text-end">
+                                                Profit Netto
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody id="ledger-tbody">
@@ -194,8 +195,8 @@
                                                 colspan="6"
                                                 class="text-center text-muted py-4"
                                             >
-                                                Select "Sync Data" or "Zastosuj"
-                                                to load ledger.
+                                                Wybierz "Synchronizuj dane" albo
+                                                "Zastosuj" aby załadować dane.
                                             </td>
                                         </tr>
                                     </tbody>
@@ -209,13 +210,13 @@
                         class="view-section"
                         style="display: none"
                     >
-                        <h4 class="mb-4">Offer Master Data</h4>
+                        <h4 class="mb-4">Koszty produktów</h4>
                         <div class="card p-4">
                             <p class="text-muted small">
-                                Assign default COGS and Packaging costs to
-                                Offers extracted from your ledger. These values
-                                automatically apply to future profitability
-                                calculations.
+                                Przypisz domyślne koszty COGS i pakowania do
+                                ofert wyodrębnionych z księgi głównej. Wartości
+                                te automatycznie zostaną zastosowane do
+                                przyszłych obliczeń rentowności.
                             </p>
                             <div class="table-responsive">
                                 <table
@@ -224,12 +225,9 @@
                                     <thead>
                                         <tr>
                                             <th>Allegro Offer ID</th>
-                                            <th style="width: 25%">
-                                                Purchase Price Net (PLN)
-                                            </th>
-                                            <th style="width: 25%">
-                                                Packaging Cost Net (PLN)
-                                            </th>
+                                            <th style="width: 20%">Purchase Price Net (PLN)</th>
+                                            <th style="width: 20%">Packaging Cost Net (PLN)</th>
+                                            <th style="width: 15%">VAT Rate</th>
                                             <th class="text-end">Actions</th>
                                         </tr>
                                     </thead>
@@ -239,8 +237,8 @@
                                                 colspan="4"
                                                 class="text-center text-muted py-4"
                                             >
-                                                No active offers found. Sync
-                                                ledger first.
+                                                Nie znaleziono aktywnych ofert.
+                                                Zsynchronizuj dane.
                                             </td>
                                         </tr>
                                     </tbody>
@@ -262,7 +260,7 @@
                 <div class="modal-content">
                     <div class="modal-header border-secondary">
                         <h5 class="modal-title">
-                            Order Breakdown:
+                            Szczegóły zamówienia:
                             <span
                                 id="modal-order-id"
                                 class="text-primary-accent font-monospace"
@@ -289,7 +287,6 @@
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
         <script src="app.js"></script>
 
-        <!-- Toast Container for Global Notifications -->
         <div
             class="toast-container position-fixed bottom-0 end-0 p-3"
             style="z-index: 1100"

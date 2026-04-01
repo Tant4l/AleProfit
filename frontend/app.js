@@ -1,5 +1,5 @@
 const Config = {
-  API_BASE_URL: "http://localhost:7071/api",
+  API_BASE_URL: "aleprofit-functionapp-f3fqgwbzavheg4ad.westeurope-01.azurewebsites.net/api",
   CLIENT_ID:
     new URLSearchParams(window.location.search).get("clientId") ||
     localStorage.getItem("activeClientId"),
@@ -53,7 +53,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
 function initDates() {
   const now = new Date();
-  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
   const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
   const formatDateInput = (dateObj) => {
@@ -66,7 +65,7 @@ function initDates() {
   const startInput = document.getElementById("filter-start");
   const endInput = document.getElementById("filter-end");
 
-  startInput.value = formatDateInput(firstDay);
+  startInput.value = "2026-03-01"; 
   endInput.value = formatDateInput(lastDay);
 
   State.startDate = startInput.value;
@@ -201,13 +200,19 @@ async function fetchLedger() {
       const estTax = order.IncomeBeforeTax * 0.19;
       const pureProfit = order.IncomeBeforeTax - estTax;
 
+      const isCancelled = order.InternalStatus === 'CANCELLED';
+      const statusBadge = `<span class="badge ${isCancelled ? 'bg-danger' : 'bg-success'} ms-2">${order.InternalStatus}</span>`;
+      const rowClass = isCancelled ? 'opacity-50 text-decoration-line-through' : '';
+
       const tr = document.createElement("tr");
+      tr.className = rowClass;
       tr.onclick = () => showOrderModal(index);
       tr.innerHTML = `
                 <td>${formatDate(order.OrderDatePL)}</td>
                 <td class="font-monospace">
                     ${order.AllegroOrderId.substring(0, 8)}...
-                    ${order.IsB2b ? '<span class="badge bg-secondary ms-2">B2B</span>' : ""}
+                    ${statusBadge}
+                    <br><small class="text-white opacity-75">${order.ProductSummary.substring(0, 50)}...</small>
                 </td>
                 <td class="text-end">${formatCurrency(order.RevenueGross)}</td>
                 <td class="text-end text-danger">-${formatCurrency(totalCostsNet)}</td>
@@ -217,7 +222,8 @@ async function fetchLedger() {
       tbody.appendChild(tr);
     });
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-4">Error loading ledger data.</td></tr>`;
+    console.error("Ledger Fetch Error:", err);
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-4">Error loading ledger data. Check console for details.</td></tr>`;
   }
 }
 
@@ -296,23 +302,29 @@ async function renderMasterData() {
     offers.forEach((offer) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td class="font-monospace text-primary-accent">${offer.offerId}<br><small class="text-muted">${offer.name.substring(0, 30)}...</small></td>
+        <td class="font-monospace text-primary-accent">${offer.offerId}<br><small class="text-white">${offer.name.substring(0, 45)}...</small></td>
         <td>
             <div class="input-group input-group-sm">
                 <input type="number" id="cogs-${offer.offerId}" class="form-control bg-dark text-light border-secondary" value="${offer.cogs}" step="0.01" min="0">
-                <span class="input-group-text bg-surface text-muted border-secondary">PLN</span>
             </div>
         </td>
         <td>
             <div class="input-group input-group-sm">
                 <input type="number" id="pkg-${offer.offerId}" class="form-control bg-dark text-light border-secondary" value="${offer.pkg}" step="0.01" min="0">
-                <span class="input-group-text bg-surface text-muted border-secondary">PLN</span>
             </div>
+        </td>
+        <td>
+            <select id="vat-${offer.offerId}" class="form-select form-select-sm bg-dark text-light border-secondary">
+                <option value="23.00" ${offer.vat === 23 ? 'selected' : ''}>23%</option>
+                <option value="8.00" ${offer.vat === 8 ? 'selected' : ''}>8%</option>
+                <option value="5.00" ${offer.vat === 5 ? 'selected' : ''}>5%</option>
+                <option value="0.00" ${offer.vat === 0 ? 'selected' : ''}>0% (ZW/Exempt)</option>
+            </select>
         </td>
         <td class="text-end">
             <button class="btn btn-sm btn-outline-primary px-3" onclick="saveOfferCosts(event, '${offer.offerId}')">Save</button>
         </td>
-      `;
+    `;
       tbody.appendChild(tr);
     });
   } catch (err) {
@@ -321,15 +333,16 @@ async function renderMasterData() {
 }
 
 async function saveOfferCosts(event, offerId) {
-  const btn = event.target; // Now correctly referenced via passed argument
-  const cogs = document.getElementById(`cogs-${offerId}`).value;
-  const pkg = document.getElementById(`pkg-${offerId}`).value;
+  const btn = event.target;
+  const cogs = parseFloat(document.getElementById(`cogs-${offerId}`).value) || 0;
+  const pkg = parseFloat(document.getElementById(`pkg-${offerId}`).value) || 0;
+  const vatRate = parseFloat(document.getElementById(`vat-${offerId}`).value) || 23.0;
 
   try {
     const res = await fetch(`${Config.API_BASE_URL}/UpdateOfferCosts`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId: Config.CLIENT_ID, offerId, cogs, pkg }),
+      body: JSON.stringify({ clientId: Config.CLIENT_ID, offerId, cogs, pkg, vatRate }), // Added vatRate
     });
 
     if (res.ok) {
