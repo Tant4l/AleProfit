@@ -1,5 +1,6 @@
 const Config = {
-  API_BASE_URL: "https://aleprofit-functionapp-f3fqgwbzavheg4ad.westeurope-01.azurewebsites.net/api",
+  API_BASE_URL:
+    "https://aleprofit-functionapp-f3fqgwbzavheg4ad.westeurope-01.azurewebsites.net/api",
   CLIENT_ID:
     new URLSearchParams(window.location.search).get("clientId") ||
     localStorage.getItem("activeClientId"),
@@ -65,7 +66,7 @@ function initDates() {
   const startInput = document.getElementById("filter-start");
   const endInput = document.getElementById("filter-end");
 
-  startInput.value = "2026-03-01"; 
+  startInput.value = "2026-03-01";
   endInput.value = formatDateInput(lastDay);
 
   State.startDate = startInput.value;
@@ -110,9 +111,10 @@ function loadView(viewId) {
 }
 
 function handleConnectAllegro() {
-  const liveCallback = "https://aleprofit-functionapp-f3fqgwbzavheg4ad.westeurope-01.azurewebsites.net/api/AllegroAuthCallback";
+  const liveCallback =
+    "https://aleprofit-functionapp-f3fqgwbzavheg4ad.westeurope-01.azurewebsites.net/api/AllegroAuthCallback";
   const redirectUri = encodeURIComponent(liveCallback);
-  const oauthUrl = "https://allegro.pl.allegrosandbox.pl/auth/oauth/authorize?response_type=code&client_id=${Config.ALLEGRO_APP_ID}&redirect_uri=${redirectUri}&state=${Config.CLIENT_ID}";
+  const oauthUrl = `https://allegro.pl.allegrosandbox.pl/auth/oauth/authorize?response_type=code&client_id=${Config.ALLEGRO_APP_ID}&redirect_uri=${redirectUri}&state=${Config.CLIENT_ID}`;
   window.location.href = oauthUrl;
 }
 
@@ -191,17 +193,27 @@ async function fetchLedger() {
     }
 
     data.forEach((order, index) => {
+      const taxRateDropdown = document.getElementById("tax-rate-dropdown");
+      const taxRateValue = taxRateDropdown ? taxRateDropdown.value : "19.00";
+      const taxRateDecimal = parseFloat(taxRateValue) / 100;
       const totalCostsNet =
         order.TotalCogsNet +
         order.TotalPackagingNet +
         order.CommissionsNet +
         order.CourierCostsNet;
-      const estTax = order.IncomeBeforeTax * 0.19;
+      let estTax = 0;
+      if (taxRateValue === "8.50") {
+        estTax = order.RevenueNet * taxRateDecimal;
+      } else {
+        estTax = Math.max(0, order.IncomeBeforeTax * taxRateDecimal);
+      }
       const pureProfit = order.IncomeBeforeTax - estTax;
 
-      const isCancelled = order.InternalStatus === 'CANCELLED';
-      const statusBadge = `<span class="badge ${isCancelled ? 'bg-danger' : 'bg-success'} ms-2">${order.InternalStatus}</span>`;
-      const rowClass = isCancelled ? 'opacity-50 text-decoration-line-through' : '';
+      const isCancelled = order.InternalStatus === "CANCELLED";
+      const statusBadge = `<span class="badge ${isCancelled ? "bg-danger" : "bg-success"} ms-2">${order.InternalStatus}</span>`;
+      const rowClass = isCancelled
+        ? "opacity-50 text-decoration-line-through"
+        : "";
 
       const tr = document.createElement("tr");
       tr.className = rowClass;
@@ -314,10 +326,10 @@ async function renderMasterData() {
         </td>
         <td>
             <select id="vat-${offer.offerId}" class="form-select form-select-sm bg-dark text-light border-secondary">
-                <option value="23.00" ${offer.vat === 23 ? 'selected' : ''}>23%</option>
-                <option value="8.00" ${offer.vat === 8 ? 'selected' : ''}>8%</option>
-                <option value="5.00" ${offer.vat === 5 ? 'selected' : ''}>5%</option>
-                <option value="0.00" ${offer.vat === 0 ? 'selected' : ''}>0% (ZW/Exempt)</option>
+                <option value="23.00" ${offer.vat === 23 ? "selected" : ""}>23%</option>
+                <option value="8.00" ${offer.vat === 8 ? "selected" : ""}>8%</option>
+                <option value="5.00" ${offer.vat === 5 ? "selected" : ""}>5%</option>
+                <option value="0.00" ${offer.vat === 0 ? "selected" : ""}>0% (ZW/Exempt)</option>
             </select>
         </td>
         <td class="text-end">
@@ -333,15 +345,23 @@ async function renderMasterData() {
 
 async function saveOfferCosts(event, offerId) {
   const btn = event.target;
-  const cogs = parseFloat(document.getElementById(`cogs-${offerId}`).value) || 0;
+  const cogs =
+    parseFloat(document.getElementById(`cogs-${offerId}`).value) || 0;
   const pkg = parseFloat(document.getElementById(`pkg-${offerId}`).value) || 0;
-  const vatRate = parseFloat(document.getElementById(`vat-${offerId}`).value) || 23.0;
+  const vatRate =
+    parseFloat(document.getElementById(`vat-${offerId}`).value) || 23.0;
 
   try {
     const res = await fetch(`${Config.API_BASE_URL}/UpdateOfferCosts`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId: Config.CLIENT_ID, offerId, cogs, pkg, vatRate }), // Added vatRate
+      body: JSON.stringify({
+        clientId: Config.CLIENT_ID,
+        offerId,
+        cogs,
+        pkg,
+        vatRate,
+      }), // Added vatRate
     });
 
     if (res.ok) {
