@@ -16,7 +16,9 @@ BEGIN
 
         CAST(
             CASE
-                WHEN @IncomeTaxRate = 8.50 THEN SUM(RevenueNet) * (@IncomeTaxRate / 100.0)
+                WHEN @IncomeTaxRate = 8.50 THEN SUM(RevenueNet) * 0.085
+                WHEN @IncomeTaxRate = 12.00 THEN CASE WHEN SUM(IncomeBeforeTax) > 0 THEN SUM(IncomeBeforeTax) * 0.21 ELSE 0 END
+                WHEN @IncomeTaxRate = 19.00 THEN CASE WHEN SUM(IncomeBeforeTax) > 0 THEN SUM(IncomeBeforeTax) * 0.239 ELSE 0 END
                 ELSE CASE WHEN SUM(IncomeBeforeTax) > 0 THEN SUM(IncomeBeforeTax) * (@IncomeTaxRate / 100.0) ELSE 0 END
             END
         AS DECIMAL(12,2)) AS EstimatedIncomeTax,

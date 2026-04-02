@@ -139,7 +139,7 @@ const formatDate = (dateString) => {
 async function fetchDashboard() {
   toggleLoader(true);
   try {
-    const taxRate = document.getElementById("tax-rate-dropdown")?.value || 19.0;
+    const taxRate = document.getElementById("tax-rate-dropdown")?.value || 23.9;
     const url = `${Config.API_BASE_URL}/GetDashboardSummary?clientId=${Config.CLIENT_ID}&startDate=${State.startDate}&endDate=${State.endDate}&taxRate=${taxRate}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error("API Error");
@@ -195,18 +195,26 @@ async function fetchLedger() {
     data.forEach((order, index) => {
       const taxRateDropdown = document.getElementById("tax-rate-dropdown");
       const taxRateValue = taxRateDropdown ? taxRateDropdown.value : "19.00";
-      const taxRateDecimal = parseFloat(taxRateValue) / 100;
+
       const totalCostsNet =
         order.TotalCogsNet +
         order.TotalPackagingNet +
         order.CommissionsNet +
         order.CourierCostsNet;
+
       let estTax = 0;
+
       if (taxRateValue === "8.50") {
-        estTax = order.RevenueNet * taxRateDecimal;
+        estTax = order.RevenueNet * 0.085;
+      } else if (taxRateValue === "12.00") {
+        estTax = Math.max(0, order.IncomeBeforeTax * 0.21);
+      } else if (taxRateValue === "19.00") {
+        estTax = Math.max(0, order.IncomeBeforeTax * 0.239);
       } else {
-        estTax = Math.max(0, order.IncomeBeforeTax * taxRateDecimal);
+        const fallbackRate = parseFloat(taxRateValue) / 100;
+        estTax = Math.max(0, order.IncomeBeforeTax * fallbackRate);
       }
+
       const pureProfit = order.IncomeBeforeTax - estTax;
 
       const isCancelled = order.InternalStatus === "CANCELLED";
