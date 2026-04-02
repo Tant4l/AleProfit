@@ -99,7 +99,10 @@
                             <select
                                 id="tax-rate-dropdown"
                                 class="form-select form-select-sm bg-surface text-light border-secondary"
-                                onchange="fetchDashboard()"
+                                onchange="
+                                    fetchDashboard();
+                                    fetchLedger();
+                                "
                             >
                                 <option value="19.00">
                                     19% (Podatek Liniowy)
