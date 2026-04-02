@@ -55,3 +55,5 @@ Wymagane jest skonfigurowanie zmiennej środowiskowej `SqlConnectionString` w Az
 ## Uwagi
 
 W zakładce *Koszty produktów* możliwe jest wybranie VAT, kosztu pakowania, kosztu zakupu a następnie zapisanie. Po wciśnięciu *Sync Data* dane w pozostałych zakładkach zostaną zaktualizowane.
+
+Aktualna wersja aplikacji obsługuje tylko zakupy wykonane w **polskiej wersji serwisu Allegro** w PLN.
