@@ -14,23 +14,11 @@ BEGIN
         SUM(CommissionsNet) AS TotalAllegroCommissions,
         SUM(CourierCostsNet) AS TotalCourierCosts,
 
-        CAST(
-            CASE
-                WHEN @IncomeTaxRate = 8.50 THEN SUM(RevenueNet) * 0.085
-                WHEN @IncomeTaxRate = 12.00 THEN CASE WHEN SUM(IncomeBeforeTax) > 0 THEN SUM(IncomeBeforeTax) * 0.21 ELSE 0 END
-                WHEN @IncomeTaxRate = 19.00 THEN CASE WHEN SUM(IncomeBeforeTax) > 0 THEN SUM(IncomeBeforeTax) * 0.239 ELSE 0 END
-                ELSE CASE WHEN SUM(IncomeBeforeTax) > 0 THEN SUM(IncomeBeforeTax) * (@IncomeTaxRate / 100.0) ELSE 0 END
-            END
-        AS DECIMAL(12,2)) AS EstimatedIncomeTax,
+        dbo.fn_GetEstimatedTax(SUM(IncomeBeforeTax), SUM(RevenueNet), @IncomeTaxRate) AS EstimatedIncomeTax,
 
-        CAST(
-            SUM(IncomeBeforeTax) -
-            CASE
-                WHEN @IncomeTaxRate = 8.50 THEN SUM(RevenueNet) * (@IncomeTaxRate / 100.0)
-                ELSE CASE WHEN SUM(IncomeBeforeTax) > 0 THEN SUM(IncomeBeforeTax) * (@IncomeTaxRate / 100.0) ELSE 0 END
-            END
-        AS DECIMAL(12,2)) AS PureProfitAfterTax
+        SUM(IncomeBeforeTax) - dbo.fn_GetEstimatedTax(SUM(IncomeBeforeTax), SUM(RevenueNet), @IncomeTaxRate) AS PureProfitAfterTax
 
     FROM vw_OrderProfitability_Detailed
     WHERE ClientId = @ClientId AND OrderDatePL >= @StartDatePL AND OrderDatePL <= @EndDatePL;
 END;
+GO

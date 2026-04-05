@@ -45,6 +45,10 @@ namespace AllegroRecruitment
                 ? eDate
                 : startDate.AddMonths(1).AddTicks(-1);
 
+            decimal taxRate = decimal.TryParse(query["taxRate"], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var tRate)
+                ? tRate
+                : 23.90m;
+
             int offset = int.TryParse(query["offset"], out int o) ? o : 0;
             int limit = int.TryParse(query["limit"], out int l) ? l : 50;
             if (limit > 500) limit = 500;
@@ -73,7 +77,9 @@ namespace AllegroRecruitment
                             TotalPackagingNet,
                             CommissionsNet,
                             CourierCostsNet,
-                            IncomeBeforeTax
+                            IncomeBeforeTax,
+                            dbo.fn_GetEstimatedTax(IncomeBeforeTax, RevenueNet, @TaxRate) AS EstimatedTax,
+                            (IncomeBeforeTax - dbo.fn_GetEstimatedTax(IncomeBeforeTax, RevenueNet, @TaxRate)) AS PureProfitAfterTax
                         FROM vw_OrderProfitability_Detailed
                         WHERE ClientId = @ClientId
                         AND OrderDatePL >= @StartDate
@@ -86,6 +92,7 @@ namespace AllegroRecruitment
                         cmd.Parameters.AddWithValue("@ClientId", clientId);
                         cmd.Parameters.AddWithValue("@StartDate", startDate);
                         cmd.Parameters.AddWithValue("@EndDate", endDate);
+                        cmd.Parameters.AddWithValue("@TaxRate", taxRate);
                         cmd.Parameters.AddWithValue("@Offset", offset);
                         cmd.Parameters.AddWithValue("@Limit", limit);
 
@@ -105,7 +112,9 @@ namespace AllegroRecruitment
                                     reader.GetDecimal(8),              // TotalPackagingNet
                                     reader.GetDecimal(9),              // CommissionsNet
                                     reader.GetDecimal(10),             // CourierCostsNet
-                                    reader.GetDecimal(11)              // IncomeBeforeTax
+                                    reader.GetDecimal(11),             // IncomeBeforeTax
+                                    reader.GetDecimal(12),             // EstimatedTax
+                                    reader.GetDecimal(13)              // PureProfitAfterTax
                                 ));
                             }
                         }

@@ -12,6 +12,8 @@ namespace AllegroRecruitment.Models
         decimal TotalPackagingNet,
         decimal CommissionsNet,
         decimal CourierCostsNet,
-        decimal IncomeBeforeTax
+        decimal IncomeBeforeTax,
+        decimal EstimatedTax,
+        decimal PureProfitAfterTax
     );
 }

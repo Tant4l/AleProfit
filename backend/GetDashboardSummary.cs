@@ -44,7 +44,7 @@ namespace AllegroRecruitment
 
             decimal taxRate = decimal.TryParse(query["taxRate"], System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var tRate)
                 ? tRate
-                : 19.00m;
+                : 23.90m;
 
             string connectionString = Environment.GetEnvironmentVariable("SqlConnectionString")
                 ?? throw new InvalidOperationException("Missing SqlConnectionString");
