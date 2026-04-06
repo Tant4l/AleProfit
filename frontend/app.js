@@ -156,19 +156,27 @@ async function fetchDashboard() {
     const data = await res.json();
 
     const revenueNet = data.GrandTotalRevenueNet || 0;
-    const totalCosts =
-      (data.TotalCOGS || 0) +
-      (data.TotalPackaging || 0) +
-      (data.TotalCourierCosts || 0) +
-      (data.TotalAllegroCommissions || 0);
+    const cogs = data.TotalCOGS || 0;
+    const packaging = data.TotalPackaging || 0;
+    const courier = data.TotalCourierCosts || 0;
+    const commissions = data.TotalAllegroCommissions || 0;
+
+    const totalCosts = cogs + packaging + courier + commissions;
     const totalTax = data.EstimatedIncomeTax || 0;
     const pureProfit = data.PureProfitAfterTax || 0;
 
+    // KPI Cards
     document.getElementById("dash-revenue").innerText =
       formatCurrency(revenueNet);
     document.getElementById("dash-costs").innerText =
       formatCurrency(totalCosts);
     document.getElementById("dash-tax").innerText = formatCurrency(totalTax);
+
+    const margin = revenueNet > 0 ? (pureProfit / revenueNet) * 100 : 0;
+    document.getElementById("dash-margin").innerText = margin.toFixed(1) + "%";
+
+    const roi = cogs > 0 ? (pureProfit / cogs) * 100 : 0;
+    document.getElementById("dash-roi").innerText = Math.round(roi) + "%";
 
     const profitEl = document.getElementById("dash-profit");
     profitEl.innerText = formatCurrency(pureProfit);
@@ -177,7 +185,15 @@ async function fetchDashboard() {
         ? "mb-0 text-success fw-bold"
         : "mb-0 text-danger fw-bold";
 
-    updateDashboardSummaryChart(revenueNet, totalCosts, totalTax, pureProfit);
+    updateDashboardCharts({
+      revenue: revenueNet,
+      cogs,
+      packaging,
+      courier,
+      commissions,
+      tax: totalTax,
+      profit: pureProfit,
+    });
   } catch (err) {
     console.error("Dashboard Load Error:", err);
     showError("Nie udało się pobrać danych pulpitu.");
@@ -186,7 +202,12 @@ async function fetchDashboard() {
   }
 }
 
-function updateDashboardSummaryChart(revenue, costs, tax, profit) {
+function updateDashboardCharts(data) {
+  updateFinancialStructureChart(data);
+  updateCostDistributionChart(data);
+}
+
+function updateFinancialStructureChart(data) {
   const ctx = document.getElementById("profitabilityChart").getContext("2d");
 
   if (State.chartInstance) {
@@ -196,51 +217,125 @@ function updateDashboardSummaryChart(revenue, costs, tax, profit) {
   State.chartInstance = new Chart(ctx, {
     type: "bar",
     data: {
-      labels: ["Przychody", "Koszty", "Podatek", "Zysk Netto"],
+      labels: [
+        "Przychód",
+        "Koszt Towaru",
+        "Prowizje",
+        "Logistyka",
+        "Podatek",
+        "Zysk Netto",
+      ],
       datasets: [
         {
-          data: [revenue, costs, tax, profit],
-          backgroundColor: [
-            "rgba(59, 130, 246, 0.6)", // Blue
-            "rgba(239, 68, 68, 0.6)", // Red
-            "rgba(245, 158, 11, 0.6)", // Yellow/Orange
-            "rgba(16, 185, 129, 0.6)", // Green
+          label: "Kwota (PLN)",
+          data: [
+            data.revenue,
+            -data.cogs,
+            -data.commissions,
+            -(data.packaging + data.courier),
+            -data.tax,
+            data.profit,
           ],
-          borderColor: ["#3b82f6", "#ef4444", "#f59e0b", "#10b981"],
-          borderWidth: 1,
-          borderRadius: 8,
-          barThickness: 60,
+          backgroundColor: [
+            "rgba(59, 130, 246, 0.8)", // Blue (Revenue)
+            "rgba(239, 68, 68, 0.8)", // Red (COGS)
+            "rgba(249, 115, 22, 0.8)", // Orange (Commissions)
+            "rgba(139, 92, 246, 0.8)", // Purple (Logistics)
+            "rgba(245, 158, 11, 0.8)", // Amber (Tax)
+            "rgba(16, 185, 129, 0.8)", // Green (Profit)
+          ],
+          borderRadius: 6,
+          borderWidth: 0,
+          barThickness: 45,
         },
       ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      indexAxis: "y", // Horizontal Bar
       plugins: {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: (context) => " " + formatCurrency(context.raw),
+            label: (context) => " " + formatCurrency(Math.abs(context.raw)),
           },
         },
       },
       scales: {
         x: {
+          grid: { display: false },
+          ticks: { color: "#94a3b8", font: { weight: "500" } },
+        },
+        y: {
           grid: { color: "rgba(148, 163, 184, 0.1)" },
           ticks: {
             color: "#94a3b8",
-            callback: (value) =>
-              new Intl.NumberFormat("pl-PL", {
-                style: "currency",
-                currency: "PLN",
-                maximumFractionDigits: 0,
-              }).format(value),
+            callback: (value) => formatCurrency(value).replace(",00", ""),
           },
         },
-        y: {
-          grid: { display: false },
-          ticks: { color: "#f8fafc", font: { weight: "600" } },
+      },
+    },
+  });
+}
+
+function updateCostDistributionChart(data) {
+  const canvas = document.getElementById("costDistributionChart");
+  const ctx = canvas.getContext("2d");
+
+  // Check if there is an existing chart on this canvas and destroy it
+  const existingChart = Chart.getChart(canvas);
+  if (existingChart) {
+    existingChart.destroy();
+  }
+
+  new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: ["Towar", "Prowizje", "Logistyka", "Podatek"],
+      datasets: [
+        {
+          data: [
+            data.cogs,
+            data.commissions,
+            data.packaging + data.courier,
+            data.tax,
+          ],
+          backgroundColor: [
+            "rgba(239, 68, 68, 0.8)", // Red
+            "rgba(249, 115, 22, 0.8)", // Orange
+            "rgba(139, 92, 246, 0.8)", // Purple
+            "rgba(245, 158, 11, 0.8)", // Amber
+          ],
+          borderColor: "rgba(26, 29, 33, 1)",
+          borderWidth: 4,
+          hoverOffset: 15,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "70%",
+      plugins: {
+        legend: {
+          position: "bottom",
+          labels: {
+            color: "#94a3b8",
+            padding: 20,
+            usePointStyle: true,
+            font: { size: 12, weight: "500" },
+          },
+        },
+        tooltip: {
+          callbacks: {
+            label: (context) => {
+              const label = context.label || "";
+              const value = context.raw || 0;
+              const total = context.dataset.data.reduce((a, b) => a + b, 0);
+              const percentage = ((value / total) * 100).toFixed(1);
+              return ` ${label}: ${formatCurrency(value)} (${percentage}%)`;
+            },
+          },
         },
       },
     },

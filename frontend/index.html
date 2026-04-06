@@ -155,7 +155,7 @@
                         </div>
 
                         <div class="row g-3 mb-4">
-                            <div class="col-md-3">
+                            <div class="col-md-2">
                                 <div class="card p-3 h-100 border-0 shadow-sm">
                                     <div
                                         class="d-flex justify-content-between align-items-start mb-2"
@@ -172,22 +172,22 @@
                                             ></i>
                                         </div>
                                     </div>
-                                    <h3
+                                    <h4
                                         id="dash-revenue"
                                         class="mb-0 text-white fw-bold"
                                     >
                                         0,00 PLN
-                                    </h3>
+                                    </h4>
                                 </div>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-2">
                                 <div class="card p-3 h-100 border-0 shadow-sm">
                                     <div
                                         class="d-flex justify-content-between align-items-start mb-2"
                                     >
                                         <span
                                             class="text-muted small fw-medium text-uppercase tracking-wider"
-                                            >Koszty całkowite</span
+                                            >Koszty</span
                                         >
                                         <div
                                             class="icon-shape bg-danger-subtle text-danger rounded-2 p-2"
@@ -195,22 +195,22 @@
                                             <i class="bi bi-receipt fs-5"></i>
                                         </div>
                                     </div>
-                                    <h3
+                                    <h4
                                         id="dash-costs"
                                         class="mb-0 text-white fw-bold"
                                     >
                                         0,00 PLN
-                                    </h3>
+                                    </h4>
                                 </div>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-2">
                                 <div class="card p-3 h-100 border-0 shadow-sm">
                                     <div
                                         class="d-flex justify-content-between align-items-start mb-2"
                                     >
                                         <span
                                             class="text-muted small fw-medium text-uppercase tracking-wider"
-                                            >Podatek szacowany</span
+                                            >Podatek</span
                                         >
                                         <div
                                             class="icon-shape bg-warning-subtle text-warning rounded-2 p-2"
@@ -218,15 +218,63 @@
                                             <i class="bi bi-percent fs-5"></i>
                                         </div>
                                     </div>
-                                    <h3
+                                    <h4
                                         id="dash-tax"
                                         class="mb-0 text-danger fw-bold"
                                     >
                                         0,00 PLN
-                                    </h3>
+                                    </h4>
                                 </div>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-2">
+                                <div class="card p-3 h-100 border-0 shadow-sm">
+                                    <div
+                                        class="d-flex justify-content-between align-items-start mb-2"
+                                    >
+                                        <span
+                                            class="text-muted small fw-medium text-uppercase tracking-wider"
+                                            >Rentowność</span
+                                        >
+                                        <div
+                                            class="icon-shape bg-info-subtle text-info rounded-2 p-2"
+                                        >
+                                            <i class="bi bi-graph-up fs-5"></i>
+                                        </div>
+                                    </div>
+                                    <h4
+                                        id="dash-margin"
+                                        class="mb-0 text-info fw-bold"
+                                    >
+                                        0.0%
+                                    </h4>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="card p-3 h-100 border-0 shadow-sm">
+                                    <div
+                                        class="d-flex justify-content-between align-items-start mb-2"
+                                    >
+                                        <span
+                                            class="text-muted small fw-medium text-uppercase tracking-wider"
+                                            >ROI</span
+                                        >
+                                        <div
+                                            class="icon-shape bg-primary-subtle text-primary rounded-2 p-2"
+                                        >
+                                            <i
+                                                class="bi bi-piggy-bank fs-5"
+                                            ></i>
+                                        </div>
+                                    </div>
+                                    <h4
+                                        id="dash-roi"
+                                        class="mb-0 text-primary fw-bold"
+                                    >
+                                        0%
+                                    </h4>
+                                </div>
+                            </div>
+                            <div class="col-md-2">
                                 <div
                                     class="card p-3 h-100 border-0 border-start border-success border-4 shadow-lg highlight-card"
                                 >
@@ -245,19 +293,19 @@
                                             ></i>
                                         </div>
                                     </div>
-                                    <h2
+                                    <h3
                                         id="dash-profit"
                                         class="mb-0 text-success fw-bold"
                                     >
                                         0,00 PLN
-                                    </h2>
+                                    </h3>
                                 </div>
                             </div>
                         </div>
 
                         <div class="row g-3 mb-4">
-                            <div class="col-12">
-                                <div class="card p-4 border-0 shadow-sm">
+                            <div class="col-lg-8">
+                                <div class="card p-4 border-0 shadow-sm h-100">
                                     <div
                                         class="d-flex justify-content-between align-items-center mb-4"
                                     >
@@ -265,9 +313,25 @@
                                             Analiza struktury finansowej
                                         </h5>
                                     </div>
-                                    <div style="height: 350px">
+                                    <div style="height: 400px">
                                         <canvas
                                             id="profitabilityChart"
+                                        ></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-lg-4">
+                                <div class="card p-4 border-0 shadow-sm h-100">
+                                    <div
+                                        class="d-flex justify-content-between align-items-center mb-4"
+                                    >
+                                        <h5 class="mb-0 fw-bold">
+                                            Podział kosztów
+                                        </h5>
+                                    </div>
+                                    <div style="height: 400px">
+                                        <canvas
+                                            id="costDistributionChart"
                                         ></canvas>
                                     </div>
                                 </div>
