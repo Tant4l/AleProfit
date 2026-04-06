@@ -59,12 +59,23 @@ SELECT
     CASE WHEN o.InternalStatus = 'CANCELLED' THEN 0 ELSE ISNULL(ia.TotalPackagingNet, 0) END AS TotalPackagingNet,
 
     CASE WHEN o.InternalStatus = 'CANCELLED' THEN 0 ELSE ISNULL(ba.CommissionsNet, 0) END AS CommissionsNet,
-    CASE WHEN o.InternalStatus = 'CANCELLED' THEN 0 ELSE ISNULL(ba.CourierCostsNet, 0) END AS CourierCostsNet,
+
+    CASE
+        WHEN o.InternalStatus = 'CANCELLED' THEN 0
+        WHEN ISNULL(ba.CourierCostsNet, 0) > 0 THEN ba.CourierCostsNet
+        ELSE CAST(o.ShippingRevenueGross / (1 + (o.ShippingVatRate / 100.0)) AS DECIMAL(12,2))
+    END AS CourierCostsNet,
 
     (
         (CASE WHEN o.InternalStatus = 'CANCELLED' THEN 0 ELSE (ISNULL(ovc.TotalNet, 0) + CAST(o.ShippingRevenueGross / (1 + (o.ShippingVatRate / 100.0)) AS DECIMAL(12,2)) - ISNULL(ref.TotalRefundedNet, 0)) END)
         - (CASE WHEN o.InternalStatus = 'CANCELLED' THEN 0 ELSE (ISNULL(ia.TotalCogsNet, 0) + ISNULL(ia.TotalPackagingNet, 0)) END)
-        - (CASE WHEN o.InternalStatus = 'CANCELLED' THEN 0 ELSE (ISNULL(ba.CommissionsNet, 0) + ISNULL(ba.CourierCostsNet, 0)) END)
+
+        - (CASE WHEN o.InternalStatus = 'CANCELLED' THEN 0 ELSE ISNULL(ba.CommissionsNet, 0) END)
+        - (CASE
+            WHEN o.InternalStatus = 'CANCELLED' THEN 0
+            WHEN ISNULL(ba.CourierCostsNet, 0) > 0 THEN ba.CourierCostsNet
+            ELSE CAST(o.ShippingRevenueGross / (1 + (o.ShippingVatRate / 100.0)) AS DECIMAL(12,2))
+          END)
     ) AS IncomeBeforeTax
 
 FROM AllegroOrders o
