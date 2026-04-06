@@ -3,9 +3,19 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Allegro Tax & Profitability Dashboard</title>
+        <title>AleProfit | Kalkulator rentowności Allegro</title>
         <link
             href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+            rel="stylesheet"
+        />
+        <link
+            rel="stylesheet"
+            href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css"
+        />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
             rel="stylesheet"
         />
         <link rel="stylesheet" href="style.css" />
@@ -13,37 +23,45 @@
     <body>
         <div id="loader" class="loading-overlay">
             <div class="spinner-border text-primary-accent"></div>
-            <span class="ms-3">Przetwarzanie danych...</span>
+            <span class="ms-3 fw-medium">Przetwarzanie danych...</span>
         </div>
         <div class="d-flex" id="wrapper">
             <div class="sidebar" id="sidebar-wrapper">
                 <div
                     class="sidebar-heading text-center py-4 border-bottom border-secondary"
                 >
-                    <h5 class="fw-bold mb-0 text-white">AleProfiy</h5>
-                    <small class="text-muted"
-                        >Kalkulator rentowności zamówień</small
+                    <h5 class="fw-bold mb-0 text-white tracking-wide">
+                        <i
+                            class="bi bi-graph-up-arrow text-primary-accent me-2"
+                        ></i
+                        >AleProfit
+                    </h5>
+                    <small class="text-muted opacity-75"
+                        >Kalkulator rentowności</small
                     >
                 </div>
-                <div class="list-group list-group-flush mt-2">
+                <div class="list-group list-group-flush mt-3 px-3 gap-1">
                     <a
                         href="#"
-                        class="list-group-item list-group-item-action nav-link active"
+                        class="list-group-item list-group-item-action nav-link active rounded-3"
                         data-target="dashboard-view"
-                        >Pulpit</a
                     >
+                        <i class="bi bi-speedometer2 me-2"></i>Pulpit
+                    </a>
                     <a
                         href="#"
-                        class="list-group-item list-group-item-action nav-link"
+                        class="list-group-item list-group-item-action nav-link rounded-3"
                         data-target="ledger-view"
-                        >Rejestr Transakcji</a
                     >
+                        <i class="bi bi-list-check me-2"></i>Rejestr Transakcji
+                    </a>
                     <a
                         href="#"
-                        class="list-group-item list-group-item-action nav-link"
+                        class="list-group-item list-group-item-action nav-link rounded-3"
                         data-target="master-view"
-                        >Koszty produktów</a
                     >
+                        <i class="bi bi-box-seam me-2"></i>Koszty produktów
+                    </a>
                 </div>
             </div>
 
@@ -53,116 +71,205 @@
                 style="height: 100vh"
             >
                 <nav
-                    class="navbar navbar-expand-lg px-4 py-3 border-bottom border-secondary sticky-top bg-base"
+                    class="navbar navbar-expand-lg px-4 py-3 border-bottom border-secondary sticky-top glass-navbar"
                 >
                     <div class="d-flex flex-wrap align-items-center gap-3">
-                        <input
-                            type="date"
-                            id="filter-start"
-                            class="form-control form-control-sm bg-surface text-light border-secondary"
+                        <button
+                            class="btn btn-outline-secondary btn-sm border-0 me-2"
+                            id="menu-toggle"
+                        >
+                            <i class="bi bi-list fs-5"></i>
+                        </button>
+                        <div
+                            class="input-group input-group-sm"
                             style="width: auto"
-                        />
-                        <span class="text-muted">do</span>
-                        <input
-                            type="date"
-                            id="filter-end"
-                            class="form-control form-control-sm bg-surface text-light border-secondary"
+                        >
+                            <span
+                                class="input-group-text bg-surface border-secondary text-muted"
+                                ><i class="bi bi-calendar3"></i
+                            ></span>
+                            <input
+                                type="date"
+                                id="filter-start"
+                                class="form-control bg-surface text-light border-secondary"
+                            />
+                        </div>
+                        <span class="text-muted small fw-medium">do</span>
+                        <div
+                            class="input-group input-group-sm"
                             style="width: auto"
-                        />
+                        >
+                            <input
+                                type="date"
+                                id="filter-end"
+                                class="form-control bg-surface text-light border-secondary"
+                            />
+                        </div>
                         <button
                             id="btn-refresh"
-                            class="btn btn-sm btn-outline-secondary"
+                            class="btn btn-sm btn-outline-secondary px-3"
                         >
-                            Zastosuj
+                            <i class="bi bi-check2 me-1"></i>Zastosuj
                         </button>
                     </div>
                     <div class="ms-auto d-flex gap-2 mt-2 mt-lg-0">
                         <button
                             id="btn-connect-allegro"
-                            class="btn btn-sm btn-allegro fw-bold"
+                            class="btn btn-sm btn-allegro fw-bold px-3"
                         >
-                            Connect Allegro
+                            <i class="bi bi-plug-fill me-1"></i>Połącz z Allegro
                         </button>
                         <button
                             id="btn-sync"
                             class="btn btn-sm btn-primary-accent fw-bold px-3"
                         >
-                            Sync Data
+                            <i class="bi bi-arrow-repeat me-1"></i>Synchronizuj
                         </button>
                     </div>
                 </nav>
                 <div class="container-fluid p-4">
                     <div id="dashboard-view" class="view-section active">
-                        <h4 class="mb-4">Podsumowanie finansowe</h4>
-                        <div class="mb-3" style="max-width: 200px">
-                            <label class="small text-muted"
-                                >Stawka Podatku Dochodowego</label
-                            >
-                            <select
-                                id="tax-rate-dropdown"
-                                class="form-select form-select-sm bg-surface text-light border-secondary"
-                                onchange="
-                                    fetchDashboard();
-                                    fetchLedger();
-                                "
-                            >
-                                <option value="19.00">
-                                    19% (Podatek Liniowy) + 4,9% składka
-                                    zdrowotna
-                                </option>
-                                <option value="12.00">
-                                    12% (Skala Podatkowa) + 9% składka zdrowotna
-                                </option>
-                                <option value="8.50">8.5% (Ryczałt)</option>
-                            </select>
+                        <div class="d-flex align-items-center mb-4">
+                            <h4 class="mb-0">Podsumowanie finansowe</h4>
+                            <div class="ms-auto" style="min-width: 250px">
+                                <label class="small text-muted mb-1 d-block"
+                                    >Stawka Podatku Dochodowego</label
+                                >
+                                <select
+                                    id="tax-rate-dropdown"
+                                    class="form-select form-select-sm bg-surface text-light border-secondary shadow-sm"
+                                    onchange="
+                                        fetchDashboard();
+                                        fetchLedger();
+                                    "
+                                >
+                                    <option value="19.00">
+                                        19% (Liniowy) + 4,9% zdrowotna
+                                    </option>
+                                    <option value="12.00">
+                                        12% (Skala) + 9% zdrowotna
+                                    </option>
+                                    <option value="8.50">8.5% (Ryczałt)</option>
+                                </select>
+                            </div>
                         </div>
+
                         <div class="row g-3 mb-4">
                             <div class="col-md-3">
-                                <div class="card p-3 h-100">
-                                    <span class="text-muted small">Zyski</span>
+                                <div class="card p-3 h-100 border-0 shadow-sm">
+                                    <div
+                                        class="d-flex justify-content-between align-items-start mb-2"
+                                    >
+                                        <span
+                                            class="text-muted small fw-medium text-uppercase tracking-wider"
+                                            >Przychody</span
+                                        >
+                                        <div
+                                            class="icon-shape bg-primary-subtle text-primary rounded-2 p-2"
+                                        >
+                                            <i
+                                                class="bi bi-currency-exchange fs-5"
+                                            ></i>
+                                        </div>
+                                    </div>
                                     <h3
                                         id="dash-revenue"
-                                        class="mb-0 text-white"
+                                        class="mb-0 text-white fw-bold"
                                     >
                                         0,00 PLN
                                     </h3>
                                 </div>
                             </div>
                             <div class="col-md-3">
-                                <div class="card p-3 h-100">
-                                    <span class="text-muted small"
-                                        >Całkowite koszty podlegające
-                                        odliczeniu</span
+                                <div class="card p-3 h-100 border-0 shadow-sm">
+                                    <div
+                                        class="d-flex justify-content-between align-items-start mb-2"
                                     >
-                                    <h3 id="dash-costs" class="mb-0 text-white">
+                                        <span
+                                            class="text-muted small fw-medium text-uppercase tracking-wider"
+                                            >Koszty całkowite</span
+                                        >
+                                        <div
+                                            class="icon-shape bg-danger-subtle text-danger rounded-2 p-2"
+                                        >
+                                            <i class="bi bi-receipt fs-5"></i>
+                                        </div>
+                                    </div>
+                                    <h3
+                                        id="dash-costs"
+                                        class="mb-0 text-white fw-bold"
+                                    >
                                         0,00 PLN
                                     </h3>
                                 </div>
                             </div>
                             <div class="col-md-3">
-                                <div class="card p-3 h-100">
-                                    <span class="text-muted small"
-                                        >Szacowany podatek</span
+                                <div class="card p-3 h-100 border-0 shadow-sm">
+                                    <div
+                                        class="d-flex justify-content-between align-items-start mb-2"
                                     >
-                                    <h3 id="dash-tax" class="mb-0 text-danger">
+                                        <span
+                                            class="text-muted small fw-medium text-uppercase tracking-wider"
+                                            >Podatek szacowany</span
+                                        >
+                                        <div
+                                            class="icon-shape bg-warning-subtle text-warning rounded-2 p-2"
+                                        >
+                                            <i class="bi bi-percent fs-5"></i>
+                                        </div>
+                                    </div>
+                                    <h3
+                                        id="dash-tax"
+                                        class="mb-0 text-danger fw-bold"
+                                    >
                                         0,00 PLN
                                     </h3>
                                 </div>
                             </div>
                             <div class="col-md-3">
                                 <div
-                                    class="card p-3 h-100 border-start border-success border-4 shadow-lg"
+                                    class="card p-3 h-100 border-0 border-start border-success border-4 shadow-lg highlight-card"
                                 >
-                                    <span
-                                        class="text-muted small text-uppercase tracking-wide"
-                                        >Zysk Netto</span
+                                    <div
+                                        class="d-flex justify-content-between align-items-start mb-2"
                                     >
+                                        <span
+                                            class="text-muted small fw-bold text-uppercase tracking-wider"
+                                            >Zysk Netto</span
+                                        >
+                                        <div
+                                            class="icon-shape bg-success-subtle text-success rounded-2 p-2"
+                                        >
+                                            <i
+                                                class="bi bi-cash-stack fs-4"
+                                            ></i>
+                                        </div>
+                                    </div>
                                     <h2
                                         id="dash-profit"
                                         class="mb-0 text-success fw-bold"
                                     >
                                         0,00 PLN
                                     </h2>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mb-4">
+                            <div class="col-12">
+                                <div class="card p-4 border-0 shadow-sm">
+                                    <div
+                                        class="d-flex justify-content-between align-items-center mb-4"
+                                    >
+                                        <h5 class="mb-0 fw-bold">
+                                            Analiza struktury finansowej
+                                        </h5>
+                                    </div>
+                                    <div style="height: 350px">
+                                        <canvas
+                                            id="profitabilityChart"
+                                        ></canvas>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -173,25 +280,66 @@
                         class="view-section"
                         style="display: none"
                     >
-                        <h4 class="mb-4">Rejest Transakcji</h4>
-                        <div class="card">
+                        <div
+                            class="d-flex justify-content-between align-items-center mb-4"
+                        >
+                            <h4 class="mb-0">Rejestr Transakcji</h4>
+                            <div
+                                class="input-group input-group-sm"
+                                style="max-width: 300px"
+                            >
+                                <span
+                                    class="input-group-text bg-surface border-secondary text-muted"
+                                    ><i class="bi bi-search"></i
+                                ></span>
+                                <input
+                                    type="text"
+                                    id="ledger-search"
+                                    class="form-control bg-surface text-light border-secondary"
+                                    placeholder="Szukaj ID lub produktu..."
+                                />
+                            </div>
+                        </div>
+                        <div class="card border-0 shadow-sm">
                             <div class="table-responsive">
                                 <table
-                                    class="table table-hover table-dark mb-0"
+                                    class="table table-hover table-dark mb-0 align-middle"
                                 >
-                                    <thead>
+                                    <thead class="bg-surface">
                                         <tr>
-                                            <th>Data</th>
-                                            <th>ID zamówienia</th>
-                                            <th class="text-end">
-                                                Zysk brutto
+                                            <th class="ps-4">
+                                                <i
+                                                    class="bi bi-calendar-event me-2"
+                                                ></i
+                                                >Data
+                                            </th>
+                                            <th>
+                                                <i class="bi bi-hash me-2"></i
+                                                >ID zamówienia
                                             </th>
                                             <th class="text-end">
-                                                Suma kosztów (Net)
+                                                <i
+                                                    class="bi bi-box-arrow-in-right me-2"
+                                                ></i
+                                                >Przychód brutto
                                             </th>
-                                            <th class="text-end">Podatek</th>
                                             <th class="text-end">
-                                                Profit Netto
+                                                <i
+                                                    class="bi bi-box-arrow-left me-2"
+                                                ></i
+                                                >Suma kosztów (Net)
+                                            </th>
+                                            <th class="text-end">
+                                                <i
+                                                    class="bi bi-percent me-2"
+                                                ></i
+                                                >Podatek
+                                            </th>
+                                            <th class="text-end pe-4">
+                                                <i
+                                                    class="bi bi-wallet2 me-2"
+                                                ></i
+                                                >Profit Netto
                                             </th>
                                         </tr>
                                     </thead>
@@ -199,10 +347,10 @@
                                         <tr>
                                             <td
                                                 colspan="6"
-                                                class="text-center text-muted py-4"
+                                                class="text-center text-muted py-5"
                                             >
-                                                Wybierz "Synchronizuj dane" albo
-                                                "Zastosuj" aby załadować dane.
+                                                Wybierz "Synchronizuj dane" lub
+                                                "Zastosuj", aby załadować dane.
                                             </td>
                                         </tr>
                                     </tbody>
@@ -217,38 +365,46 @@
                         style="display: none"
                     >
                         <h4 class="mb-4">Koszty produktów</h4>
-                        <div class="card p-4">
-                            <p class="text-muted small">
-                                Przypisz domyślne koszty COGS i pakowania do
-                                ofert wyodrębnionych z księgi głównej. Wartości
-                                te automatycznie zostaną zastosowane do
-                                przyszłych obliczeń rentowności.
-                            </p>
+                        <div class="card p-4 border-0 shadow-sm">
+                            <div class="d-flex align-items-center mb-3">
+                                <i
+                                    class="bi bi-info-circle text-primary-accent me-3 fs-4"
+                                ></i>
+                                <p class="text-muted small mb-0">
+                                    Przypisz domyślne koszty COGS i pakowania do
+                                    ofert. Wartości te zostaną automatycznie
+                                    zastosowane do obliczeń rentowności.
+                                </p>
+                            </div>
                             <div class="table-responsive">
                                 <table
                                     class="table table-dark align-middle mb-0"
                                 >
                                     <thead>
                                         <tr>
-                                            <th>Allegro Offer ID</th>
-                                            <th style="width: 20%">
-                                                Koszt zakupu (PLN)
+                                            <th class="ps-3">
+                                                ID Oferty Allegro
                                             </th>
                                             <th style="width: 20%">
-                                                Koszt pakowania(PLN)
+                                                Koszt zakupu (Netto)
                                             </th>
-                                            <th style="width: 15%">VAT</th>
-                                            <th class="text-end">Akcje</th>
+                                            <th style="width: 20%">
+                                                Pakowanie (Netto)
+                                            </th>
+                                            <th style="width: 15%">
+                                                Stawka VAT
+                                            </th>
+                                            <th class="text-end pe-3">Akcje</th>
                                         </tr>
                                     </thead>
                                     <tbody id="master-tbody">
                                         <tr>
                                             <td
-                                                colspan="4"
-                                                class="text-center text-muted py-4"
+                                                colspan="5"
+                                                class="text-center text-muted py-5"
                                             >
                                                 Nie znaleziono aktywnych ofert.
-                                                Zsynchronizuj dane.
+                                                Najpierw zsynchronizuj dane.
                                             </td>
                                         </tr>
                                     </tbody>
@@ -266,34 +422,51 @@
             tabindex="-1"
             aria-hidden="true"
         >
-            <div class="modal-dialog modal-lg">
-                <div class="modal-content">
-                    <div class="modal-header border-secondary">
-                        <h5 class="modal-title">
+            <div class="modal-dialog modal-lg modal-dialog-centered">
+                <div class="modal-content border-0 shadow-lg">
+                    <div class="modal-header border-secondary bg-surface py-3">
+                        <h5 class="modal-title d-flex align-items-center">
+                            <i
+                                class="bi bi-receipt text-primary-accent me-2"
+                            ></i>
                             Szczegóły zamówienia:
                             <span
                                 id="modal-order-id"
-                                class="text-primary-accent font-monospace"
+                                class="text-primary-accent font-monospace ms-2 small"
                             ></span>
                         </h5>
                         <button
                             type="button"
                             class="btn-close btn-close-white"
                             data-bs-dismiss="modal"
-                            aria-label="Close"
+                            aria-label="Zamknij"
                         ></button>
                     </div>
-                    <div class="modal-body">
+                    <div class="modal-body p-0">
                         <pre
                             id="modal-json-payload"
-                            class="p-3 bg-dark text-light rounded overflow-auto"
-                            style="font-size: 0.85rem; max-height: 500px"
+                            class="p-4 m-0 bg-dark text-light rounded-0 overflow-auto"
+                            style="
+                                font-size: 0.85rem;
+                                max-height: 600px;
+                                border: none;
+                            "
                         ></pre>
+                    </div>
+                    <div class="modal-footer border-secondary bg-surface">
+                        <button
+                            type="button"
+                            class="btn btn-secondary btn-sm px-4"
+                            data-bs-dismiss="modal"
+                        >
+                            Zamknij
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
 
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
         <script src="app.js"></script>
 

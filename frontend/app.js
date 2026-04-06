@@ -25,6 +25,7 @@ const State = {
   endDate: "",
   ordersCache: [],
   offersCache: new Set(),
+  chartInstance: null,
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -99,6 +100,15 @@ function bindEvents() {
   document
     .getElementById("btn-connect-allegro")
     .addEventListener("click", handleConnectAllegro);
+
+  document.getElementById("menu-toggle").addEventListener("click", (e) => {
+    e.preventDefault();
+    document.getElementById("wrapper").classList.toggle("toggled");
+  });
+
+  document.getElementById("ledger-search").addEventListener("input", (e) => {
+    renderLedger(e.target.value.toLowerCase());
+  });
 }
 
 function loadView(viewId) {
@@ -166,6 +176,8 @@ async function fetchDashboard() {
       pureProfit >= 0
         ? "mb-0 text-success fw-bold"
         : "mb-0 text-danger fw-bold";
+
+    updateDashboardSummaryChart(revenueNet, totalCosts, totalTax, pureProfit);
   } catch (err) {
     console.error("Dashboard Load Error:", err);
     showError("Nie udało się pobrać danych pulpitu.");
@@ -174,9 +186,69 @@ async function fetchDashboard() {
   }
 }
 
+function updateDashboardSummaryChart(revenue, costs, tax, profit) {
+  const ctx = document.getElementById("profitabilityChart").getContext("2d");
+
+  if (State.chartInstance) {
+    State.chartInstance.destroy();
+  }
+
+  State.chartInstance = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: ["Przychody", "Koszty", "Podatek", "Zysk Netto"],
+      datasets: [
+        {
+          data: [revenue, costs, tax, profit],
+          backgroundColor: [
+            "rgba(59, 130, 246, 0.6)", // Blue
+            "rgba(239, 68, 68, 0.6)", // Red
+            "rgba(245, 158, 11, 0.6)", // Yellow/Orange
+            "rgba(16, 185, 129, 0.6)", // Green
+          ],
+          borderColor: ["#3b82f6", "#ef4444", "#f59e0b", "#10b981"],
+          borderWidth: 1,
+          borderRadius: 8,
+          barThickness: 60,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: "y", // Horizontal Bar
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: (context) => " " + formatCurrency(context.raw),
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: "rgba(148, 163, 184, 0.1)" },
+          ticks: {
+            color: "#94a3b8",
+            callback: (value) =>
+              new Intl.NumberFormat("pl-PL", {
+                style: "currency",
+                currency: "PLN",
+                maximumFractionDigits: 0,
+              }).format(value),
+          },
+        },
+        y: {
+          grid: { display: false },
+          ticks: { color: "#f8fafc", font: { weight: "600" } },
+        },
+      },
+    },
+  });
+}
 async function fetchLedger() {
   const tbody = document.getElementById("ledger-tbody");
-  tbody.innerHTML = `<tr><td colspan="6" class="text-center py-3"><div class="spinner-border text-primary-accent spinner-border-sm"></div> Fetching ledger...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="6" class="text-center py-5"><div class="spinner-border text-primary-accent spinner-border-sm"></div> <span class="ms-2">Pobieranie rejestru...</span></td></tr>`;
 
   try {
     const taxRate = document.getElementById("tax-rate-dropdown")?.value || 23.9;
@@ -186,50 +258,86 @@ async function fetchLedger() {
     const data = await res.json();
 
     State.ordersCache = data;
-    tbody.innerHTML = "";
-
-    if (data.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted py-4">No transactions found for this period.</td></tr>`;
-      return;
-    }
-
-    data.forEach((order, index) => {
-      const totalCostsNet =
-        order.TotalCogsNet +
-        order.TotalPackagingNet +
-        order.CommissionsNet +
-        order.CourierCostsNet;
-
-      const estTax = order.EstimatedTax;
-      const pureProfit = order.PureProfitAfterTax;
-
-      const isCancelled = order.InternalStatus === "CANCELLED";
-      const statusBadge = `<span class="badge ${isCancelled ? "bg-danger" : "bg-success"} ms-2">${order.InternalStatus}</span>`;
-      const rowClass = isCancelled
-        ? "opacity-50 text-decoration-line-through"
-        : "";
-
-      const tr = document.createElement("tr");
-      tr.className = rowClass;
-      tr.onclick = () => showOrderModal(index);
-      tr.innerHTML = `
-                <td>${formatDate(order.OrderDatePL)}</td>
-                <td class="font-monospace">
-                    ${order.AllegroOrderId.substring(0, 8)}...
-                    ${statusBadge}
-                    <br><small class="text-white opacity-75">${order.ProductSummary.substring(0, 50)}...</small>
-                </td>
-                <td class="text-end">${formatCurrency(order.RevenueGross)}</td>
-                <td class="text-end text-danger">-${formatCurrency(totalCostsNet)}</td>
-                <td class="text-end text-danger">-${formatCurrency(estTax)}</td>
-                <td class="text-end fw-bold ${pureProfit >= 0 ? "text-success" : "text-danger"}">${formatCurrency(pureProfit)}</td>
-            `;
-      tbody.appendChild(tr);
-    });
+    renderLedger();
   } catch (err) {
     console.error("Ledger Fetch Error:", err);
-    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-4">Error loading ledger data. Check console for details.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-danger py-5">Błąd podczas ładowania danych rejestru. Sprawdź konsolę.</td></tr>`;
   }
+}
+
+function renderLedger(filter = "") {
+  const tbody = document.getElementById("ledger-tbody");
+  tbody.innerHTML = "";
+
+  const filtered = State.ordersCache.filter((order) => {
+    return (
+      order.AllegroOrderId.toLowerCase().includes(filter) ||
+      order.ProductSummary.toLowerCase().includes(filter)
+    );
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" class="text-center text-muted py-5">
+          <i class="bi bi-search fs-2 d-block mb-3 opacity-25"></i>
+          Nie znaleziono transakcji pasujących do kryteriów.
+        </td>
+      </tr>`;
+    return;
+  }
+
+  filtered.forEach((order) => {
+    const totalCostsNet =
+      order.TotalCogsNet +
+      order.TotalPackagingNet +
+      order.CommissionsNet +
+      order.CourierCostsNet;
+
+    const estTax = order.EstimatedTax;
+    const pureProfit = order.PureProfitAfterTax;
+
+    const isCancelled = order.InternalStatus === "CANCELLED";
+    const statusBadge = `<span class="badge ${isCancelled ? "bg-danger" : "bg-success"} ms-2">${isCancelled ? "ANULOWANE" : "ZREALIZOWANE"}</span>`;
+    const rowClass = isCancelled
+      ? "opacity-50 text-decoration-line-through"
+      : "";
+
+    const tr = document.createElement("tr");
+    tr.className = rowClass;
+    tr.innerHTML = `
+                <td class="ps-4" onclick="showOrderModalByOrderId('${order.AllegroOrderId}')">${formatDate(order.OrderDatePL)}</td>
+                <td class="font-monospace">
+                    <span class="text-primary-accent">${order.AllegroOrderId.substring(0, 8)}...</span>
+                    <button class="btn btn-link btn-sm text-muted p-0 ms-1" onclick="copyToClipboard('${order.AllegroOrderId}')">
+                        <i class="bi bi-clipboard small"></i>
+                    </button>
+                    ${statusBadge}
+                    <br><small class="text-muted" onclick="showOrderModalByOrderId('${order.AllegroOrderId}')">${order.ProductSummary.substring(0, 50)}...</small>
+                </td>
+                <td class="text-end" onclick="showOrderModalByOrderId('${order.AllegroOrderId}')">${formatCurrency(order.RevenueGross)}</td>
+                <td class="text-end text-danger" onclick="showOrderModalByOrderId('${order.AllegroOrderId}')">-${formatCurrency(totalCostsNet)}</td>
+                <td class="text-end text-danger" onclick="showOrderModalByOrderId('${order.AllegroOrderId}')">-${formatCurrency(estTax)}</td>
+                <td class="text-end pe-4 fw-bold ${pureProfit >= 0 ? "text-success" : "text-danger"}" onclick="showOrderModalByOrderId('${order.AllegroOrderId}')">${formatCurrency(pureProfit)}</td>
+            `;
+    tbody.appendChild(tr);
+  });
+}
+
+function showOrderModalByOrderId(orderId) {
+  const orderIndex = State.ordersCache.findIndex(
+    (o) => o.AllegroOrderId === orderId,
+  );
+  if (orderIndex !== -1) showOrderModal(orderIndex);
+}
+
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    showError(
+      "Skopiowano do schowka: " + text.substring(0, 8) + "...",
+      "success",
+    );
+  });
 }
 
 function showOrderModal(orderIndex) {
@@ -248,40 +356,40 @@ function showOrderModal(orderIndex) {
 
 async function handleSync() {
   const btn = document.getElementById("btn-sync");
-  const originalText = btn.innerText;
+  const originalHTML = btn.innerHTML;
 
   try {
     btn.disabled = true;
 
-    btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Syncing Orders...`;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Sync zamówień...`;
     let res = await fetch(
       `${Config.API_BASE_URL}/SyncAllegroOrders?clientId=${Config.CLIENT_ID}`,
       { method: "POST" },
     );
     if (!res.ok) throw new Error("Order Sync Failed");
 
-    btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Syncing Ledger...`;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Sync bilingów...`;
     res = await fetch(
       `${Config.API_BASE_URL}/SyncAllegroBilling?clientId=${Config.CLIENT_ID}`,
       { method: "POST" },
     );
     if (!res.ok) throw new Error("Billing Sync Failed");
 
-    btn.innerText = "Sync Complete!";
+    btn.innerHTML = `<i class="bi bi-check-lg me-1"></i> Zakończono!`;
     btn.classList.replace("btn-primary-accent", "btn-success");
 
     setTimeout(() => {
-      btn.innerText = originalText;
+      btn.innerHTML = originalHTML;
       btn.classList.replace("btn-success", "btn-primary-accent");
       btn.disabled = false;
       fetchDashboard();
       fetchLedger();
     }, 2000);
   } catch (err) {
-    btn.innerText = "Sync Failed!";
+    btn.innerHTML = `<i class="bi bi-exclamation-triangle me-1"></i> Błąd!`;
     btn.classList.replace("btn-primary-accent", "btn-danger");
     setTimeout(() => {
-      btn.innerText = originalText;
+      btn.innerHTML = originalHTML;
       btn.classList.replace("btn-danger", "btn-primary-accent");
       btn.disabled = false;
     }, 3000);
@@ -290,7 +398,7 @@ async function handleSync() {
 
 async function renderMasterData() {
   const tbody = document.getElementById("master-tbody");
-  tbody.innerHTML = `<tr><td colspan="4" class="text-center py-3"><div class="spinner-border spinner-border-sm"></div> Loading offers...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="5" class="text-center py-5"><div class="spinner-border spinner-border-sm"></div> <span class="ms-2">Ładowanie ofert...</span></td></tr>`;
 
   try {
     const res = await fetch(
@@ -300,22 +408,30 @@ async function renderMasterData() {
     tbody.innerHTML = "";
 
     if (offers.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted py-4">No offers found. Run a Data Sync first.</td></tr>`;
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="5" class="text-center text-muted py-5">
+            <i class="bi bi-box-seam fs-2 d-block mb-3 opacity-25"></i>
+            Nie znaleziono ofert. Uruchom najpierw <strong class="text-white">Synchronizację danych</strong>.
+          </td>
+        </tr>`;
       return;
     }
 
     offers.forEach((offer) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td class="font-monospace text-primary-accent">${offer.offerId}<br><small class="text-white">${offer.name.substring(0, 45)}...</small></td>
+        <td class="ps-3 font-monospace text-primary-accent">${offer.offerId}<br><small class="text-muted">${offer.name.substring(0, 45)}...</small></td>
         <td>
             <div class="input-group input-group-sm">
                 <input type="number" id="cogs-${offer.offerId}" class="form-control bg-dark text-light border-secondary" value="${offer.cogs}" step="0.01" min="0">
+                <span class="input-group-text bg-surface border-secondary text-muted">PLN</span>
             </div>
         </td>
         <td>
             <div class="input-group input-group-sm">
                 <input type="number" id="pkg-${offer.offerId}" class="form-control bg-dark text-light border-secondary" value="${offer.pkg}" step="0.01" min="0">
+                <span class="input-group-text bg-surface border-secondary text-muted">PLN</span>
             </div>
         </td>
         <td>
@@ -323,22 +439,26 @@ async function renderMasterData() {
                 <option value="23.00" ${offer.vat === 23 ? "selected" : ""}>23%</option>
                 <option value="8.00" ${offer.vat === 8 ? "selected" : ""}>8%</option>
                 <option value="5.00" ${offer.vat === 5 ? "selected" : ""}>5%</option>
-                <option value="0.00" ${offer.vat === 0 ? "selected" : ""}>0% (ZW/Exempt)</option>
+                <option value="0.00" ${offer.vat === 0 ? "selected" : ""}>0% (ZW)</option>
             </select>
         </td>
-        <td class="text-end">
-            <button class="btn btn-sm btn-outline-primary px-3" onclick="saveOfferCosts(event, '${offer.offerId}')">Save</button>
+        <td class="text-end pe-3">
+            <button class="btn btn-sm btn-outline-primary px-3" onclick="saveOfferCosts(event, '${offer.offerId}')">
+                <i class="bi bi-save me-1"></i>Zapisz
+            </button>
         </td>
     `;
       tbody.appendChild(tr);
     });
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="4" class="text-center text-danger py-4">Failed to load master data.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center text-danger py-5">Błąd podczas ładowania danych ofert.</td></tr>`;
   }
 }
 
 async function saveOfferCosts(event, offerId) {
-  const btn = event.target;
+  const btn = event.currentTarget;
+  const originalHTML = btn.innerHTML;
+
   const cogs =
     parseFloat(document.getElementById(`cogs-${offerId}`).value) || 0;
   const pkg = parseFloat(document.getElementById(`pkg-${offerId}`).value) || 0;
@@ -355,14 +475,14 @@ async function saveOfferCosts(event, offerId) {
         cogs,
         pkg,
         vatRate,
-      }), // Added vatRate
+      }),
     });
 
     if (res.ok) {
-      btn.innerText = "Saved!";
+      btn.innerHTML = `<i class="bi bi-check-lg me-1"></i> Zapisano!`;
       btn.className = "btn btn-sm btn-success px-3";
       setTimeout(() => {
-        btn.innerText = "Save";
+        btn.innerHTML = originalHTML;
         btn.className = "btn btn-sm btn-outline-primary px-3";
       }, 2000);
     } else {
@@ -382,7 +502,7 @@ async function checkConnectionStatus() {
     const btn = document.getElementById("btn-connect-allegro");
 
     if (data.connected) {
-      btn.innerText = "Allegro Połączone";
+      btn.innerHTML = `<i class="bi bi-check-circle-fill me-1"></i> Allegro Połączone`;
       btn.classList.replace("btn-allegro", "btn-outline-success");
       btn.disabled = true;
     }
