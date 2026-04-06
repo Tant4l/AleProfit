@@ -7,7 +7,6 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        -- FIX: Added FulfillmentStatus extraction
         SELECT * INTO #TempOrders FROM OPENJSON(@OrdersJson, '$.checkoutForms')
         WITH (
             AllegroOrderId UNIQUEIDENTIFIER '$.id', BuyerLogin NVARCHAR(100) '$.buyer.login',
@@ -22,7 +21,6 @@ BEGIN
         USING #TempOrders AS Source ON Target.ClientId = @ClientId AND Target.AllegroOrderId = Source.AllegroOrderId
         WHEN MATCHED THEN
             UPDATE SET
-                -- FIX: Prioritize CANCELLED from either status. Otherwise fallback to fulfillment status.
                 InternalStatus = CASE
                     WHEN Source.OrderStatus = 'CANCELLED' OR Source.FulfillmentStatus = 'CANCELLED' THEN 'CANCELLED'
                     ELSE ISNULL(Source.FulfillmentStatus, Source.OrderStatus)
