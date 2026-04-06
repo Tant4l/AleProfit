@@ -6,7 +6,7 @@ AleProfit to system obliczania rentowności zamówień dla sprzedawców w serwis
 
 ## Demo
 * Adres aplikacji: https://gentle-river-035083a03.6.azurestaticapps.net/?clientId=ee2b6b01-1a32-413a-bc80-895d92add18e
-* Synchronizacja: Aby odświeżyć dane po zmianach w konfiguracji kosztów, użyj przycisku **"Sync Data"** w prawym górnym rogu.
+* Synchronizacja: Aby odświeżyć dane po zmianach w konfiguracji kosztów, użyj przycisku **"Synchronizuj"** w prawym górnym rogu.
 
 ---
 
