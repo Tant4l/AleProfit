@@ -304,27 +304,21 @@ function renderLedger(filter = "") {
       : "";
 
     const tr = document.createElement("tr");
-    tr.className = rowClass + " cursor-pointer";
-    tr.onclick = (e) => {
-      // Don't open modal if clicking the copy button
-      if (!e.target.closest(".btn-copy")) {
-        showOrderModalByOrderId(order.AllegroOrderId);
-      }
-    };
+    tr.className = rowClass;
     tr.innerHTML = `
-                <td class="ps-4">${formatDate(order.OrderDatePL)}</td>
+                <td class="ps-4" onclick="showOrderModalByOrderId('${order.AllegroOrderId}')">${formatDate(order.OrderDatePL)}</td>
                 <td class="font-monospace">
                     <span class="text-primary-accent">${order.AllegroOrderId.substring(0, 8)}...</span>
-                    <button class="btn btn-link btn-sm text-muted p-0 ms-1 btn-copy" onclick="copyToClipboard(event, '${order.AllegroOrderId}')">
+                    <button class="btn btn-link btn-sm text-muted p-0 ms-1" onclick="copyToClipboard('${order.AllegroOrderId}')">
                         <i class="bi bi-clipboard small"></i>
                     </button>
                     ${statusBadge}
-                    <br><small class="text-muted">${order.ProductSummary.substring(0, 50)}...</small>
+                    <br><small class="text-muted" onclick="showOrderModalByOrderId('${order.AllegroOrderId}')">${order.ProductSummary.substring(0, 50)}...</small>
                 </td>
-                <td class="text-end">${formatCurrency(order.RevenueGross)}</td>
-                <td class="text-end text-danger">-${formatCurrency(totalCostsNet)}</td>
-                <td class="text-end text-danger">-${formatCurrency(estTax)}</td>
-                <td class="text-end pe-4 fw-bold ${pureProfit >= 0 ? "text-success" : "text-danger"}">${formatCurrency(pureProfit)}</td>
+                <td class="text-end" onclick="showOrderModalByOrderId('${order.AllegroOrderId}')">${formatCurrency(order.RevenueGross)}</td>
+                <td class="text-end text-danger" onclick="showOrderModalByOrderId('${order.AllegroOrderId}')">-${formatCurrency(totalCostsNet)}</td>
+                <td class="text-end text-danger" onclick="showOrderModalByOrderId('${order.AllegroOrderId}')">-${formatCurrency(estTax)}</td>
+                <td class="text-end pe-4 fw-bold ${pureProfit >= 0 ? "text-success" : "text-danger"}" onclick="showOrderModalByOrderId('${order.AllegroOrderId}')">${formatCurrency(pureProfit)}</td>
             `;
     tbody.appendChild(tr);
   });
@@ -337,13 +331,11 @@ function showOrderModalByOrderId(orderId) {
   if (orderIndex !== -1) showOrderModal(orderIndex);
 }
 
-function copyToClipboard(e, text) {
-  if (e) e.stopPropagation(); // Stop row click from triggering modal
+function copyToClipboard(text) {
   navigator.clipboard.writeText(text).then(() => {
-    showError("Skopiowano do schowka: " + text.substring(0, 8) + "...", "success");
-  });
-}
-
+    showError(
+      "Skopiowano do schowka: " + text.substring(0, 8) + "...",
+      "success",
     );
   });
 }
