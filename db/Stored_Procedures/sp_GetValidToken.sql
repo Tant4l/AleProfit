@@ -12,6 +12,7 @@ BEGIN
             ELSE 0
         END AS NeedsRefresh
     FROM ClientAllegroTokens WITH (NOLOCK)
-    WHERE ClientId = @ClientId;
+    WHERE ClientId = @ClientId
+    ORDER BY UpdatedAt DESC;
 END;
 GO

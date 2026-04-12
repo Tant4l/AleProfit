@@ -5,7 +5,8 @@ WITH OrderVatContext AS (
         SUM(li.UnitPriceGross * li.Quantity) as TotalGross,
         SUM(CAST(li.UnitPriceGross / (1 + (md.VatRateValue / 100.0)) * li.Quantity AS DECIMAL(12,2))) as TotalNet
     FROM OrderLineItems li
-    JOIN OfferMasterData md ON li.AllegroOfferId = md.AllegroOfferId
+    JOIN AllegroOrders o ON li.InternalOrderId = o.InternalId
+    JOIN OfferMasterData md ON li.AllegroOfferId = md.AllegroOfferId AND md.ClientId = o.ClientId
     GROUP BY li.InternalOrderId
 ),
 ItemAggregates AS (
@@ -15,12 +16,14 @@ ItemAggregates AS (
         SUM(md.DefaultPurchasePriceNet * li.Quantity) AS TotalCogsNet,
         SUM(md.DefaultPackagingCostNet * li.Quantity) AS TotalPackagingNet
     FROM OrderLineItems li
-    LEFT JOIN OfferMasterData md ON li.AllegroOfferId = md.AllegroOfferId
+    JOIN AllegroOrders o ON li.InternalOrderId = o.InternalId
+    LEFT JOIN OfferMasterData md ON li.AllegroOfferId = md.AllegroOfferId AND md.ClientId = o.ClientId
     GROUP BY li.InternalOrderId
 ),
 BillingAggregates AS (
     SELECT
         b.AllegroOrderId,
+        b.ClientId,
         SUM(CASE WHEN ISNULL(cat.CategoryGroup, 'COMMISSION') = 'COMMISSION'
                  THEN CAST(ABS(b.Amount) / (1 + (b.VatRate / 100.0)) AS DECIMAL(12,2)) ELSE 0 END) as CommissionsNet,
         SUM(CASE WHEN cat.CategoryGroup = 'LOGISTICS'
@@ -28,7 +31,7 @@ BillingAggregates AS (
     FROM AllegroBillingEntries b
     LEFT JOIN AllegroFeeCategories cat ON b.FeeType = cat.FeeType
     WHERE b.AllegroOrderId IS NOT NULL
-    GROUP BY b.AllegroOrderId
+    GROUP BY b.AllegroOrderId, b.ClientId
 ),
 RefundAggregates AS (
     SELECT
@@ -81,6 +84,6 @@ SELECT
 FROM AllegroOrders o
 LEFT JOIN OrderVatContext ovc ON o.InternalId = ovc.InternalOrderId
 LEFT JOIN ItemAggregates ia ON o.InternalId = ia.InternalOrderId
-LEFT JOIN BillingAggregates ba ON o.AllegroOrderId = ba.AllegroOrderId
+LEFT JOIN BillingAggregates ba ON o.AllegroOrderId = ba.AllegroOrderId AND o.ClientId = ba.ClientId
 LEFT JOIN RefundAggregates ref ON o.InternalId = ref.InternalOrderId;
 GO
