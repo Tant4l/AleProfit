@@ -58,7 +58,7 @@ namespace AllegroRecruitment
                     await conn.OpenAsync();
                     using (SqlCommand cmdDate = new SqlCommand("SELECT LastBillingSyncAt FROM Clients WHERE ClientId = @ClientId", conn))
                     {
-                        cmdDate.Parameters.AddWithValue("@ClientId", clientId);
+                        cmdDate.Parameters.Add("@ClientId", System.Data.SqlDbType.UniqueIdentifier).Value = clientId;
                         var result = await cmdDate.ExecuteScalarAsync();
                         if (result != DBNull.Value && result != null)
                         {
@@ -106,22 +106,32 @@ namespace AllegroRecruitment
 
                 if (!billingResponse.IsSuccessStatusCode)
                 {
-                    _logger.LogError("Allegro Billing API Sync Failed. Status: {Status}, Response: {Body}", 
+                    _logger.LogError("Allegro Billing API Sync Failed. Status: {Status}, Response: {Body}",
                         (int)billingResponse.StatusCode, billingJson);
-                    
+
                     var errResponse = req.CreateResponse(HttpStatusCode.BadGateway);
-                    await errResponse.WriteStringAsync($"Allegro API Error: {billingResponse.ReasonPhrase}");
+                    await errResponse.WriteStringAsync($"Allegro API Error: {billingResponse.ReasonPhrase ?? billingResponse.StatusCode.ToString()}");
                     return errResponse;
                 }
 
-                using JsonDocument doc = JsonDocument.Parse(billingJson);
-                if (!doc.RootElement.TryGetProperty("billingEntries", out JsonElement billingEntries))
+                JsonElement billingEntries;
+                int currentBatchCount;
+                try
                 {
-                    hasMoreData = false;
-                    break;
+                    using JsonDocument doc = JsonDocument.Parse(billingJson);
+                    if (!doc.RootElement.TryGetProperty("billingEntries", out billingEntries))
+                    {
+                        hasMoreData = false;
+                        break;
+                    }
+                    currentBatchCount = billingEntries.GetArrayLength();
+                }
+                catch (JsonException ex)
+                {
+                    _logger.LogError(ex, "Malformed billing response from Allegro.");
+                    return req.CreateResponse(HttpStatusCode.BadGateway);
                 }
 
-                int currentBatchCount = billingEntries.GetArrayLength();
                 if (currentBatchCount == 0)
                 {
                     hasMoreData = false;
@@ -136,16 +146,26 @@ namespace AllegroRecruitment
                         using (SqlCommand cmd = new SqlCommand("sp_UpsertAllegroBillingFromJSON", conn))
                         {
                             cmd.CommandType = System.Data.CommandType.StoredProcedure;
-                            cmd.Parameters.AddWithValue("@ClientId", clientId);
-                            cmd.Parameters.AddWithValue("@BillingJson", billingJson);
+                            cmd.Parameters.Add("@ClientId", System.Data.SqlDbType.UniqueIdentifier).Value = clientId;
+                            cmd.Parameters.Add("@BillingJson", System.Data.SqlDbType.NVarChar, -1).Value = billingJson;
                             await cmd.ExecuteNonQueryAsync();
                         }
                     }
                     totalEntriesProcessed += currentBatchCount;
                     offset += limit;
 
-                    // Safety break if limit is reached to prevent infinite loops in dev
-                    if (offset > 10000) break; 
+                    if (currentBatchCount < limit)
+                    {
+                        hasMoreData = false;
+                    }
+
+                    if (offset > 10000)
+                    {
+                        _logger.LogWarning("Billing sync safety cap hit for client {ClientId}. Watermark NOT advanced.", clientId);
+                        var capResponse = req.CreateResponse(HttpStatusCode.OK);
+                        await capResponse.WriteStringAsync($"Partial sync: processed {totalEntriesProcessed} operations; safety cap reached. Re-run to continue.");
+                        return capResponse;
+                    }
                 }
                 catch (SqlException sqlEx)
                 {
@@ -157,15 +177,19 @@ namespace AllegroRecruitment
             }
 
             // 5. Update Tenant High-Water Mark to prevent re-syncing old data
-            using (SqlConnection conn = new SqlConnection(sqlConnectionString))
+            try
             {
+                using SqlConnection conn = new SqlConnection(sqlConnectionString);
                 await conn.OpenAsync();
                 string updateSql = "UPDATE Clients SET LastBillingSyncAt = SYSDATETIMEOFFSET() WHERE ClientId = @ClientId";
-                using (SqlCommand cmd = new SqlCommand(updateSql, conn))
-                {
-                    cmd.Parameters.AddWithValue("@ClientId", clientId);
-                    await cmd.ExecuteNonQueryAsync();
-                }
+                using SqlCommand cmd = new SqlCommand(updateSql, conn);
+                cmd.Parameters.Add("@ClientId", System.Data.SqlDbType.UniqueIdentifier).Value = clientId;
+                await cmd.ExecuteNonQueryAsync();
+            }
+            catch (SqlException ex)
+            {
+                _logger.LogError(ex, "Failed to advance billing watermark for client {ClientId}", clientId);
+                return req.CreateResponse(HttpStatusCode.InternalServerError);
             }
 
             var successResponse = req.CreateResponse(HttpStatusCode.OK);

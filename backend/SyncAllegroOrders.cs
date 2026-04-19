@@ -16,7 +16,7 @@ using Microsoft.Extensions.Logging;
 
 namespace AllegroRecruitment
 {
-    public record VatSyncEntry(string OfferId, string ProductName, decimal VatRate);
+    public record VatSyncEntry(string OfferId, string? ProductName, decimal VatRate);
 
     public class SyncAllegroOrders
     {
@@ -57,12 +57,17 @@ namespace AllegroRecruitment
             {
                 accessToken = await _tokenService.GetValidTokenAsync(clientId);
             }
-            catch (Exception ex)
+            catch (UnauthorizedAccessException ex)
             {
-                _logger.LogError(ex, "Failed to retrieve a valid Allegro token for client {ClientId}", clientId);
+                _logger.LogWarning(ex, "No valid Allegro token for client {ClientId}", clientId);
                 var unauthResponse = req.CreateResponse(HttpStatusCode.Unauthorized);
                 await unauthResponse.WriteStringAsync("Authentication failed: No valid tokens available.");
                 return unauthResponse;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Token retrieval failed for client {ClientId}", clientId);
+                return req.CreateResponse(HttpStatusCode.InternalServerError);
             }
 
             int offset = 0;
@@ -93,9 +98,22 @@ namespace AllegroRecruitment
                     return errResponse;
                 }
 
-                using JsonDocument doc = JsonDocument.Parse(ordersJson);
-                var checkoutForms = doc.RootElement.GetProperty("checkoutForms");
-                int currentBatchCount = checkoutForms.GetArrayLength();
+                int currentBatchCount;
+                try
+                {
+                    using JsonDocument doc = JsonDocument.Parse(ordersJson);
+                    if (!doc.RootElement.TryGetProperty("checkoutForms", out var checkoutForms))
+                    {
+                        hasMoreData = false;
+                        break;
+                    }
+                    currentBatchCount = checkoutForms.GetArrayLength();
+                }
+                catch (JsonException ex)
+                {
+                    _logger.LogError(ex, "Malformed orders response from Allegro.");
+                    return req.CreateResponse(HttpStatusCode.BadGateway);
+                }
 
                 if (currentBatchCount == 0)
                 {
@@ -111,13 +129,20 @@ namespace AllegroRecruitment
                         using (SqlCommand cmd = new SqlCommand("sp_UpsertAllegroOrdersFromJSON", conn))
                         {
                             cmd.CommandType = System.Data.CommandType.StoredProcedure;
-                            cmd.Parameters.AddWithValue("@ClientId", clientId);
-                            cmd.Parameters.AddWithValue("@OrdersJson", ordersJson);
+                            cmd.Parameters.Add("@ClientId", System.Data.SqlDbType.UniqueIdentifier).Value = clientId;
+                            cmd.Parameters.Add("@OrdersJson", System.Data.SqlDbType.NVarChar, -1).Value = ordersJson;
                             await cmd.ExecuteNonQueryAsync();
                         }
                     }
                     totalOrdersProcessed += currentBatchCount;
                     offset += limit;
+
+                    if (currentBatchCount < limit) hasMoreData = false;
+                    if (offset > 10000)
+                    {
+                        _logger.LogWarning("Order sync safety cap hit for client {ClientId}.", clientId);
+                        break;
+                    }
                 }
                 catch (SqlException sqlEx)
                 {
@@ -135,7 +160,7 @@ namespace AllegroRecruitment
                 string query = "SELECT AllegroOfferId FROM OfferMasterData WHERE IsVatSynced = 0 AND ClientId = @ClientId";
                 using (SqlCommand cmd = new SqlCommand(query, conn))
                 {
-                    cmd.Parameters.AddWithValue("@ClientId", clientId);
+                    cmd.Parameters.Add("@ClientId", System.Data.SqlDbType.UniqueIdentifier).Value = clientId;
                     using (var reader = await cmd.ExecuteReaderAsync())
                     {
                         while (await reader.ReadAsync()) unsyncedOffers.Add(reader.GetString(0));
@@ -149,33 +174,40 @@ namespace AllegroRecruitment
             var tasks = unsyncedOffers.Select(async offerId => {
                 await semaphore.WaitAsync();
                 try {
-                    var offerRequest = new HttpRequestMessage(HttpMethod.Get, $"{apiBaseUrl}/sale/offers/{offerId}");
+                    using var offerRequest = new HttpRequestMessage(HttpMethod.Get, $"{apiBaseUrl}/sale/offers/{Uri.EscapeDataString(offerId)}");
                     offerRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
                     offerRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.allegro.public.v1+json"));
 
-                    var offerResponse = await _httpClient.SendAsync(offerRequest);
+                    using var offerResponse = await _httpClient.SendAsync(offerRequest);
                     if (offerResponse.IsSuccessStatusCode) {
                         using JsonDocument offerDoc = JsonDocument.Parse(await offerResponse.Content.ReadAsStringAsync());
-                        
-                        string realName = offerDoc.RootElement.TryGetProperty("name", out var nameProp) 
+
+                        string realName = offerDoc.RootElement.TryGetProperty("name", out var nameProp)
                             ? nameProp.GetString() ?? "Unknown Product"
                             : "Unknown Product";
 
                         decimal realVatRate = 23.00m;
                         if (offerDoc.RootElement.TryGetProperty("tax", out var tax) && tax.TryGetProperty("rate", out var rate)) {
                             string rateStr = rate.GetString() ?? "23.00";
-                            realVatRate = rateStr.Contains("EXEMPT") ? 0.00m : decimal.Parse(rateStr, System.Globalization.CultureInfo.InvariantCulture);
+                            if (rateStr.Contains("EXEMPT"))
+                            {
+                                realVatRate = 0.00m;
+                            }
+                            else if (!decimal.TryParse(rateStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out realVatRate))
+                            {
+                                realVatRate = 23.00m;
+                            }
                         }
 
                         vatResults.Add(new VatSyncEntry(offerId, realName, realVatRate));
                     }
-                    else 
+                    else
                     {
-                        // FIX: If API fails (e.g. 404 for archived Sandbox offers), 
+                        // FIX: If API fails (e.g. 404 for archived Sandbox offers),
                         // force sync completion with fallback data to prevent infinite retry loop.
                         vatResults.Add(new VatSyncEntry(offerId, null, 23.00m));
                     }
-                } 
+                }
                 catch (Exception ex) {
                     _logger.LogWarning("Failed to enrich metadata for offer {OfferId}: {Msg}", offerId, ex.Message);
                     vatResults.Add(new VatSyncEntry(offerId, null, 23.00m));
@@ -192,10 +224,10 @@ namespace AllegroRecruitment
                         await conn.OpenAsync();
                         using (SqlCommand batchCmd = new SqlCommand("sp_BatchUpdateOfferVat", conn)) {
                             batchCmd.CommandType = System.Data.CommandType.StoredProcedure;
-                            batchCmd.Parameters.AddWithValue("@ClientId", clientId);
-                            
+                            batchCmd.Parameters.Add("@ClientId", System.Data.SqlDbType.UniqueIdentifier).Value = clientId;
+
                             var jsonOptions = new JsonSerializerOptions { PropertyNamingPolicy = null };
-                            batchCmd.Parameters.AddWithValue("@VatDataJson", JsonSerializer.Serialize(vatResults, jsonOptions));
+                            batchCmd.Parameters.Add("@VatDataJson", System.Data.SqlDbType.NVarChar, -1).Value = JsonSerializer.Serialize(vatResults, jsonOptions);
                             
                             await batchCmd.ExecuteNonQueryAsync();
                         }
