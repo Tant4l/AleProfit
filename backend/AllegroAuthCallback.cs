@@ -41,17 +41,17 @@ namespace AllegroRecruitment
 
             // Environment Configuration
             string authBaseUrl = Environment.GetEnvironmentVariable("Allegro_AuthBaseUrl") ?? "https://allegro.pl.allegrosandbox.pl";
-            string appClientId = Environment.GetEnvironmentVariable("Allegro_ClientId") ?? throw new Exception("Missing Allegro_ClientId");
-            string appClientSecret = Environment.GetEnvironmentVariable("Allegro_ClientSecret") ?? throw new Exception("Missing Allegro_ClientSecret");
-            string redirectUri = Environment.GetEnvironmentVariable("Allegro_RedirectUri") ?? throw new Exception("Missing Allegro_RedirectUri");
-            string sqlConn = Environment.GetEnvironmentVariable("SqlConnectionString") ?? throw new Exception("Missing SqlConnectionString");
+            string appClientId = Environment.GetEnvironmentVariable("Allegro_ClientId") ?? throw new InvalidOperationException("Missing Allegro_ClientId");
+            string appClientSecret = Environment.GetEnvironmentVariable("Allegro_ClientSecret") ?? throw new InvalidOperationException("Missing Allegro_ClientSecret");
+            string redirectUri = Environment.GetEnvironmentVariable("Allegro_RedirectUri") ?? throw new InvalidOperationException("Missing Allegro_RedirectUri");
+            string sqlConn = Environment.GetEnvironmentVariable("SqlConnectionString") ?? throw new InvalidOperationException("Missing SqlConnectionString");
 
             // 1. Token Exchange Request
             var tokenRequest = new HttpRequestMessage(HttpMethod.Post, $"{authBaseUrl}/auth/oauth/token");
             var authHeader = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{appClientId}:{appClientSecret}"));
             tokenRequest.Headers.Authorization = new AuthenticationHeaderValue("Basic", authHeader);
 
-            var postData = $"grant_type=authorization_code&code={code}&redirect_uri={Uri.EscapeDataString(redirectUri)}";
+            var postData = $"grant_type=authorization_code&code={Uri.EscapeDataString(code)}&redirect_uri={Uri.EscapeDataString(redirectUri)}";
             tokenRequest.Content = new StringContent(postData, Encoding.UTF8, "application/x-www-form-urlencoded");
 
             var response = await _httpClient.SendAsync(tokenRequest);
@@ -64,10 +64,22 @@ namespace AllegroRecruitment
             }
 
             // 2. Parse and Persist
-            using JsonDocument doc = JsonDocument.Parse(responseBody);
-            string access = doc.RootElement.GetProperty("access_token").GetString()!;
-            string refresh = doc.RootElement.GetProperty("refresh_token").GetString()!;
-            int expires = doc.RootElement.GetProperty("expires_in").GetInt32();
+            string access, refresh;
+            int expires;
+            try
+            {
+                using JsonDocument doc = JsonDocument.Parse(responseBody);
+                access = doc.RootElement.GetProperty("access_token").GetString()
+                    ?? throw new InvalidOperationException("access_token missing");
+                refresh = doc.RootElement.GetProperty("refresh_token").GetString()
+                    ?? throw new InvalidOperationException("refresh_token missing");
+                expires = doc.RootElement.GetProperty("expires_in").GetInt32();
+            }
+            catch (Exception ex) when (ex is JsonException || ex is KeyNotFoundException || ex is InvalidOperationException)
+            {
+                _logger.LogError(ex, "Malformed token response from Allegro.");
+                return req.CreateResponse(HttpStatusCode.BadGateway);
+            }
 
             try
             {
@@ -77,10 +89,10 @@ namespace AllegroRecruitment
                     using (var cmd = new SqlCommand("sp_UpsertClientToken", conn))
                     {
                         cmd.CommandType = System.Data.CommandType.StoredProcedure;
-                        cmd.Parameters.AddWithValue("@ClientId", clientId);
-                        cmd.Parameters.AddWithValue("@AccessToken", access);
-                        cmd.Parameters.AddWithValue("@RefreshToken", refresh);
-                        cmd.Parameters.AddWithValue("@ExpiresInSeconds", expires);
+                        cmd.Parameters.Add("@ClientId", System.Data.SqlDbType.UniqueIdentifier).Value = clientId;
+                        cmd.Parameters.Add("@AccessToken", System.Data.SqlDbType.NVarChar, -1).Value = access;
+                        cmd.Parameters.Add("@RefreshToken", System.Data.SqlDbType.NVarChar, -1).Value = refresh;
+                        cmd.Parameters.Add("@ExpiresInSeconds", System.Data.SqlDbType.Int).Value = expires;
                         await cmd.ExecuteNonQueryAsync();
                     }
                 }
@@ -91,8 +103,8 @@ namespace AllegroRecruitment
                 return req.CreateResponse(HttpStatusCode.InternalServerError);
             }
 
-            string frontendUrl = Environment.GetEnvironmentVariable("Frontend_Url") 
-                ?? throw new Exception("Missing Frontend_Url");
+            string frontendUrl = Environment.GetEnvironmentVariable("Frontend_Url")
+                ?? throw new InvalidOperationException("Missing Frontend_Url");
 
             var successResponse = req.CreateResponse(HttpStatusCode.Found); // HTTP 302
             successResponse.Headers.Add("Location", $"{frontendUrl}?clientId={clientId}"); 

@@ -470,6 +470,14 @@ async function handleSync() {
     );
     if (!res.ok) throw new Error("Billing Sync Failed");
 
+    const billingBody = await res.text();
+    if (billingBody.startsWith("Partial sync")) {
+      showError(
+        "Synchronizacja częściowa — uruchom ponownie, aby dokończyć.",
+        "warning",
+      );
+    }
+
     btn.innerHTML = `<i class="bi bi-check-lg me-1"></i> Zakończono!`;
     btn.classList.replace("btn-primary-accent", "btn-success");
 
@@ -516,25 +524,25 @@ async function renderMasterData() {
     offers.forEach((offer) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td class="ps-3 font-monospace text-primary-accent">${offer.offerId}<br><small class="text-muted">${offer.name.substring(0, 45)}...</small></td>
+        <td class="ps-3 font-monospace text-primary-accent">${offer.offerId}<br><small class="text-muted">${(offer.name || "Bez nazwy").substring(0, 45)}...</small></td>
         <td>
             <div class="input-group input-group-sm">
-                <input type="number" id="cogs-${offer.offerId}" class="form-control bg-dark text-light border-secondary" value="${offer.cogs}" step="0.01" min="0">
+                <input type="number" id="cogs-${offer.offerId}" class="form-control bg-dark text-light border-secondary" value="${offer.cogs ?? 0}" step="0.01" min="0">
                 <span class="input-group-text bg-surface border-secondary text-muted">PLN</span>
             </div>
         </td>
         <td>
             <div class="input-group input-group-sm">
-                <input type="number" id="pkg-${offer.offerId}" class="form-control bg-dark text-light border-secondary" value="${offer.pkg}" step="0.01" min="0">
+                <input type="number" id="pkg-${offer.offerId}" class="form-control bg-dark text-light border-secondary" value="${offer.pkg ?? 0}" step="0.01" min="0">
                 <span class="input-group-text bg-surface border-secondary text-muted">PLN</span>
             </div>
         </td>
         <td>
             <select id="vat-${offer.offerId}" class="form-select form-select-sm bg-dark text-light border-secondary">
-                <option value="23.00" ${offer.vat === 23 ? "selected" : ""}>23%</option>
-                <option value="8.00" ${offer.vat === 8 ? "selected" : ""}>8%</option>
-                <option value="5.00" ${offer.vat === 5 ? "selected" : ""}>5%</option>
-                <option value="0.00" ${offer.vat === 0 ? "selected" : ""}>0% (ZW)</option>
+                <option value="23.00" ${Number(offer.vat) === 23 ? "selected" : ""}>23%</option>
+                <option value="8.00" ${Number(offer.vat) === 8 ? "selected" : ""}>8%</option>
+                <option value="5.00" ${Number(offer.vat) === 5 ? "selected" : ""}>5%</option>
+                <option value="0.00" ${Number(offer.vat) === 0 ? "selected" : ""}>0% (ZW)</option>
             </select>
         </td>
         <td class="text-end pe-3">
@@ -580,6 +588,11 @@ async function saveOfferCosts(event, offerId) {
         btn.innerHTML = originalHTML;
         btn.className = "btn btn-sm btn-outline-primary px-3";
       }, 2000);
+    } else if (res.status === 404) {
+      showError(
+        "Oferta nie istnieje lub została usunięta. Odśwież listę ofert.",
+        "warning",
+      );
     } else {
       showError("Błąd podczas zapisywania kosztów.");
     }

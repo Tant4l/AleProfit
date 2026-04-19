@@ -30,7 +30,15 @@ namespace AllegroRecruitment
 
             TimeZoneInfo polishTime;
             try { polishTime = TimeZoneInfo.FindSystemTimeZoneById("Europe/Warsaw"); }
-            catch { polishTime = TimeZoneInfo.FindSystemTimeZoneById("Central European Standard Time"); } // Windows fallback
+            catch (TimeZoneNotFoundException)
+            {
+                try { polishTime = TimeZoneInfo.FindSystemTimeZoneById("Central European Standard Time"); }
+                catch (TimeZoneNotFoundException ex)
+                {
+                    _logger.LogError(ex, "Polish time zone not available on host.");
+                    return req.CreateResponse(System.Net.HttpStatusCode.InternalServerError);
+                }
+            }
 
             DateTimeOffset nowInPoland = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, polishTime);
 
@@ -51,28 +59,42 @@ namespace AllegroRecruitment
 
             var result = new Dictionary<string, object>();
 
-            using (SqlConnection conn = new SqlConnection(connectionString))
+            try
             {
+                using SqlConnection conn = new SqlConnection(connectionString);
                 await conn.OpenAsync();
-                using (SqlCommand cmd = new SqlCommand("sp_GetDashboardAggregates", conn))
-                {
-                    cmd.CommandType = System.Data.CommandType.StoredProcedure;
-                    cmd.Parameters.AddWithValue("@ClientId", clientId);
-                    cmd.Parameters.AddWithValue("@StartDatePL", startDate);
-                    cmd.Parameters.AddWithValue("@EndDatePL", endDate);
-                    cmd.Parameters.AddWithValue("@IncomeTaxRate", taxRate);
+                using SqlCommand cmd = new SqlCommand("sp_GetDashboardAggregates", conn);
+                cmd.CommandType = System.Data.CommandType.StoredProcedure;
+                cmd.Parameters.Add("@ClientId", System.Data.SqlDbType.UniqueIdentifier).Value = clientId;
+                cmd.Parameters.Add("@StartDatePL", System.Data.SqlDbType.DateTimeOffset).Value = startDate;
+                cmd.Parameters.Add("@EndDatePL", System.Data.SqlDbType.DateTimeOffset).Value = endDate;
+                cmd.Parameters.Add("@IncomeTaxRate", System.Data.SqlDbType.Decimal).Value = taxRate;
 
-                    using (SqlDataReader reader = await cmd.ExecuteReaderAsync())
+                using SqlDataReader reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    for (int i = 0; i < reader.FieldCount; i++)
                     {
-                        if (await reader.ReadAsync())
+                        object value;
+                        if (reader.IsDBNull(i))
                         {
-                            for (int i = 0; i < reader.FieldCount; i++)
-                            {
-                                result.Add(reader.GetName(i), reader.IsDBNull(i) ? 0.00m : reader.GetValue(i));
-                            }
+                            var fieldType = reader.GetFieldType(i);
+                            value = fieldType == typeof(decimal) || fieldType == typeof(int) || fieldType == typeof(long) || fieldType == typeof(double)
+                                ? (object)0.00m
+                                : null!;
                         }
+                        else
+                        {
+                            value = reader.GetValue(i);
+                        }
+                        result.Add(reader.GetName(i), value);
                     }
                 }
+            }
+            catch (SqlException ex)
+            {
+                _logger.LogError(ex, "Dashboard aggregation failed for {ClientId}", clientId);
+                return req.CreateResponse(System.Net.HttpStatusCode.InternalServerError);
             }
 
             var response = req.CreateResponse(System.Net.HttpStatusCode.OK);

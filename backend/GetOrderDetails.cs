@@ -33,7 +33,15 @@ namespace AllegroRecruitment
             // 1. Timezone and Date Range Logic
             TimeZoneInfo polishTime;
             try { polishTime = TimeZoneInfo.FindSystemTimeZoneById("Europe/Warsaw"); }
-            catch { polishTime = TimeZoneInfo.FindSystemTimeZoneById("Central European Standard Time"); }
+            catch (TimeZoneNotFoundException)
+            {
+                try { polishTime = TimeZoneInfo.FindSystemTimeZoneById("Central European Standard Time"); }
+                catch (TimeZoneNotFoundException ex)
+                {
+                    _logger.LogError(ex, "Polish time zone not available on host.");
+                    return req.CreateResponse(HttpStatusCode.InternalServerError);
+                }
+            }
 
             DateTimeOffset nowInPoland = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, polishTime);
 
@@ -49,8 +57,9 @@ namespace AllegroRecruitment
                 ? tRate
                 : 23.90m;
 
-            int offset = int.TryParse(query["offset"], out int o) ? o : 0;
+            int offset = int.TryParse(query["offset"], out int o) ? Math.Max(0, o) : 0;
             int limit = int.TryParse(query["limit"], out int l) ? l : 50;
+            if (limit < 1) limit = 1;
             if (limit > 500) limit = 500;
 
             string connectionString = Environment.GetEnvironmentVariable("SqlConnectionString")
@@ -89,32 +98,35 @@ namespace AllegroRecruitment
 
                     using (SqlCommand cmd = new SqlCommand(sqlQuery, conn))
                     {
-                        cmd.Parameters.AddWithValue("@ClientId", clientId);
-                        cmd.Parameters.AddWithValue("@StartDate", startDate);
-                        cmd.Parameters.AddWithValue("@EndDate", endDate);
-                        cmd.Parameters.AddWithValue("@TaxRate", taxRate);
-                        cmd.Parameters.AddWithValue("@Offset", offset);
-                        cmd.Parameters.AddWithValue("@Limit", limit);
+                        cmd.Parameters.Add("@ClientId", System.Data.SqlDbType.UniqueIdentifier).Value = clientId;
+                        cmd.Parameters.Add("@StartDate", System.Data.SqlDbType.DateTimeOffset).Value = startDate;
+                        cmd.Parameters.Add("@EndDate", System.Data.SqlDbType.DateTimeOffset).Value = endDate;
+                        cmd.Parameters.Add("@TaxRate", System.Data.SqlDbType.Decimal).Value = taxRate;
+                        cmd.Parameters.Add("@Offset", System.Data.SqlDbType.Int).Value = offset;
+                        cmd.Parameters.Add("@Limit", System.Data.SqlDbType.Int).Value = limit;
 
                         using (SqlDataReader reader = await cmd.ExecuteReaderAsync())
                         {
+                            decimal Dec(int i) => reader.IsDBNull(i) ? 0m : reader.GetDecimal(i);
+                            string Str(int i) => reader.IsDBNull(i) ? string.Empty : reader.GetString(i);
+
                             while (await reader.ReadAsync())
                             {
                                 orders.Add(new OrderProfitabilityDto(
                                     reader.GetGuid(0).ToString(),
                                     reader.GetDateTimeOffset(1),
-                                    reader.GetString(2),
-                                    reader.GetBoolean(3),
-                                    reader.GetString(4),               // ProductSummary
-                                    reader.GetDecimal(5),              // RevenueGross
-                                    reader.GetDecimal(6),              // RevenueNet
-                                    reader.GetDecimal(7),              // TotalCogsNet
-                                    reader.GetDecimal(8),              // TotalPackagingNet
-                                    reader.GetDecimal(9),              // CommissionsNet
-                                    reader.GetDecimal(10),             // CourierCostsNet
-                                    reader.GetDecimal(11),             // IncomeBeforeTax
-                                    reader.GetDecimal(12),             // EstimatedTax
-                                    reader.GetDecimal(13)              // PureProfitAfterTax
+                                    Str(2),
+                                    !reader.IsDBNull(3) && reader.GetBoolean(3),
+                                    Str(4),
+                                    Dec(5),
+                                    Dec(6),
+                                    Dec(7),
+                                    Dec(8),
+                                    Dec(9),
+                                    Dec(10),
+                                    Dec(11),
+                                    Dec(12),
+                                    Dec(13)
                                 ));
                             }
                         }

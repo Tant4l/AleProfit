@@ -40,7 +40,7 @@ namespace AllegroRecruitment.Services
             {
                 await conn.OpenAsync();
                 using var cmd = new SqlCommand("sp_GetValidToken", conn) { CommandType = System.Data.CommandType.StoredProcedure };
-                cmd.Parameters.AddWithValue("@ClientId", clientId);
+                cmd.Parameters.Add("@ClientId", System.Data.SqlDbType.UniqueIdentifier).Value = clientId;
 
                 using var reader = await cmd.ExecuteReaderAsync();
                 if (await reader.ReadAsync())
@@ -63,7 +63,7 @@ namespace AllegroRecruitment.Services
                 refreshRequest.Headers.Authorization = new AuthenticationHeaderValue("Basic", authHeaderValue);
                 
                 refreshRequest.Content = new StringContent(
-                    $"grant_type=refresh_token&refresh_token={refreshToken}", 
+                    $"grant_type=refresh_token&refresh_token={Uri.EscapeDataString(refreshToken)}",
                     Encoding.UTF8, "application/x-www-form-urlencoded");
 
                 var response = await _httpClient.SendAsync(refreshRequest);
@@ -71,23 +71,33 @@ namespace AllegroRecruitment.Services
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    throw new HttpRequestException($"Allegro OAuth Refresh Failed. Status: {response.StatusCode}, Response: {responseBody}");
+                    throw new HttpRequestException($"Allegro OAuth Refresh Failed. Status: {response.StatusCode}");
                 }
 
-                // Parse standard OAuth2 response
-                using var doc = JsonDocument.Parse(responseBody);
-                accessToken = doc.RootElement.GetProperty("access_token").GetString()!;
-                string newRefreshToken = doc.RootElement.GetProperty("refresh_token").GetString()!;
-                int expiresIn = doc.RootElement.GetProperty("expires_in").GetInt32();
+                string newRefreshToken;
+                int expiresIn;
+                try
+                {
+                    using var doc = JsonDocument.Parse(responseBody);
+                    accessToken = doc.RootElement.GetProperty("access_token").GetString()
+                        ?? throw new InvalidOperationException("access_token missing");
+                    newRefreshToken = doc.RootElement.GetProperty("refresh_token").GetString()
+                        ?? throw new InvalidOperationException("refresh_token missing");
+                    expiresIn = doc.RootElement.GetProperty("expires_in").GetInt32();
+                }
+                catch (Exception ex) when (ex is JsonException || ex is KeyNotFoundException || ex is InvalidOperationException)
+                {
+                    throw new HttpRequestException("Malformed token refresh response from Allegro.", ex);
+                }
 
                 using (var conn = new SqlConnection(sqlConn))
                 {
                     await conn.OpenAsync();
                     using var cmd = new SqlCommand("sp_UpsertClientToken", conn) { CommandType = System.Data.CommandType.StoredProcedure };
-                    cmd.Parameters.AddWithValue("@ClientId", clientId);
-                    cmd.Parameters.AddWithValue("@AccessToken", accessToken);
-                    cmd.Parameters.AddWithValue("@RefreshToken", newRefreshToken);
-                    cmd.Parameters.AddWithValue("@ExpiresInSeconds", expiresIn);
+                    cmd.Parameters.Add("@ClientId", System.Data.SqlDbType.UniqueIdentifier).Value = clientId;
+                    cmd.Parameters.Add("@AccessToken", System.Data.SqlDbType.NVarChar, -1).Value = accessToken;
+                    cmd.Parameters.Add("@RefreshToken", System.Data.SqlDbType.NVarChar, -1).Value = newRefreshToken;
+                    cmd.Parameters.Add("@ExpiresInSeconds", System.Data.SqlDbType.Int).Value = expiresIn;
                     await cmd.ExecuteNonQueryAsync();
                 }
             }
