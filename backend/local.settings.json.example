@@ -1,0 +1,14 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "Allegro_ApiBaseUrl": "https://api.allegro.pl.allegrosandbox.pl",
+    "Allegro_AuthBaseUrl": "https://allegro.pl.allegrosandbox.pl",
+    "Allegro_RedirectUri": "http://localhost:7071/api/AllegroAuthCallback",
+    "SqlConnectionString": "Server=tcp:<server>.database.windows.net,1433;Initial Catalog=<db>;User ID=<user>;Password=<password>;Encrypt=True;Connection Timeout=30;",
+    "Allegro_ClientId": "<your-allegro-sandbox-client-id>",
+    "Allegro_ClientSecret": "<your-allegro-sandbox-client-secret>"
+  },
+  "Host": { "CORS": "*" }
+}
